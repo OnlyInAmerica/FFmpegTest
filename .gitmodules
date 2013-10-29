@@ -1,0 +1,3 @@
+[submodule "submodules/ffmpegwrapper"]
+	path = submodules/ffmpegwrapper
+	url = git@github.com:OpenWatch/FFmpegWrapper-Android.git
