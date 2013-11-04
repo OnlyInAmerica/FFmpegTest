@@ -23,7 +23,7 @@ AVCodec *videoCodec;
 AVPacket *packet; // recycled across calls to writeAVPacketFromEncodedData
 
 // Example h264 file:
-const char *sampleFilePath = "/sdcard/output.mp4";
+const char *sampleFilePath = "/sdcard/sample.mp4";
 
 // FFmpeg Utilities
 
@@ -64,7 +64,7 @@ void copyAVFormatContext(AVFormatContext **dest, AVFormatContext **source){
 
         // Copy input stream's codecContext for output stream's codecContext
         avcodec_copy_context(outputCodecContext, inputCodecContext);
-        outputCodecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL; // for native aac
+        outputCodecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
 
         LOGI("copyAVFormatContext Copied stream %d with codec %s sample_fmt %s", i, avcodec_get_name(inputCodecContext->codec_id), av_get_sample_fmt_name(inputCodecContext->sample_fmt));
 
@@ -229,7 +229,7 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
   LOGI("Wrote trailer");
 }
 
-void Java_net_openwatch_ffmpegwrapper_FFmpegWrapper_prepareAVFormatContext(JNIEnv *env, jobject obj, jstring jOutputPath){
+void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *env, jobject obj, jstring jOutputPath){
     init();
 
     AVFormatContext *inputFormatContext;
@@ -237,10 +237,12 @@ void Java_net_openwatch_ffmpegwrapper_FFmpegWrapper_prepareAVFormatContext(JNIEn
 
     outputFormatContext = avFormatContextForOutputPath(outputPath, outputFormatName);
     LOGI("post avFormatContextForOutputPath");
+
     inputFormatContext = avFormatContextForInputPath(sampleFilePath, outputFormatName);
     LOGI("post avFormatContextForInputPath");
     copyAVFormatContext(&outputFormatContext, &inputFormatContext);
     LOGI("post copyAVFormatContext");
+
 
     int result = openFileForWriting(outputFormatContext, outputPath);
     if(result < 0){
@@ -250,7 +252,7 @@ void Java_net_openwatch_ffmpegwrapper_FFmpegWrapper_prepareAVFormatContext(JNIEn
     writeFileHeader(outputFormatContext);
 }
 
-void Java_net_openwatch_ffmpegwrapper_FFmpegWrapper_writeAVPacketFromEncodedData(JNIEnv *env, jobject obj, jobject jData, jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong jFrameCount){
+void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIEnv *env, jobject obj, jobject jData, jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong jFrameCount){
     if(packet == NULL){
         packet = av_malloc(sizeof(AVPacket));
         LOGI("av_malloc packet");
@@ -265,17 +267,17 @@ void Java_net_openwatch_ffmpegwrapper_FFmpegWrapper_writeAVPacketFromEncodedData
     packet->size = (int) jSize;
     packet->data = data;
     packet->pts = (int) jFrameCount;
-    packet->dts = (int) jFrameCount;
+    //packet->dts = (int) jFrameCount;
 
     // av_packet_from_data doesn't seem appropriate, as I don't want FFmpeg to manage data
 
     if( ((int) jIsVideo) == JNI_TRUE){
         LOGI("pre write_frame video");
-        packet->stream_index = 0; // TODO
+        packet->stream_index = 1; // TODO
         // TODO: Apply bitstream filter
     }else{
         LOGI("pre write_frame audio");
-        packet->stream_index = 1; // TODO
+        packet->stream_index = 0; // TODO
     }
     LOGI("pre av_interleaved_write_frame");
     int writeFrameResult = av_interleaved_write_frame(outputFormatContext, packet);
@@ -287,7 +289,7 @@ void Java_net_openwatch_ffmpegwrapper_FFmpegWrapper_writeAVPacketFromEncodedData
     LOGI("post write_frame");
 }
 
-void Java_net_openwatch_ffmpegwrapper_FFmpegWrapper_finalizeAVFormatContext(JNIEnv *env, jobject obj){
+void Java_com_example_ffmpegtest_FFmpegWrapper_finalizeAVFormatContext(JNIEnv *env, jobject obj){
     LOGI("finalizeAVFormatContext");
     // Write file trailer (av_write_trailer)
     int writeTrailerResult = writeFileTrailer(outputFormatContext);
