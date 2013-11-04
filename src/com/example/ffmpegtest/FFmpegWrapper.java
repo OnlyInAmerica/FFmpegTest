@@ -2,6 +2,8 @@ package com.example.ffmpegtest;
 
 import java.nio.ByteBuffer;
 
+import android.util.Log;
+
 /**
  * Work in Progress
  * First goal is to construct .ts files of constant length
@@ -14,6 +16,7 @@ public class FFmpegWrapper {
 
     static {
         System.loadLibrary("FFmpegWrapper");
+        Log.i("why","not");
     }
 
     /*

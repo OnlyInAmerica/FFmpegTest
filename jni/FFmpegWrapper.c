@@ -4,6 +4,7 @@
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 
+
 #define LOG_TAG "FFmpegWrapper"
 #define LOGI(...)  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
@@ -63,6 +64,7 @@ void copyAVFormatContext(AVFormatContext **dest, AVFormatContext **source){
 
         // Copy input stream's codecContext for output stream's codecContext
         avcodec_copy_context(outputCodecContext, inputCodecContext);
+        outputCodecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL; // for native aac
 
         LOGI("copyAVFormatContext Copied stream %d with codec %s sample_fmt %s", i, avcodec_get_name(inputCodecContext->codec_id), av_get_sample_fmt_name(inputCodecContext->sample_fmt));
 
@@ -104,6 +106,11 @@ AVFormatContext* avFormatContextForInputPath(const char *inputPath, const char *
         LOGE("avformat_find_stream_info failed: %s", stringForAVErrorNumber(openInputResult));
         return NULL;
     }
+
+    LOGI("avFormatContextForInputPath Complete!");
+    LOGI("AVInputFormat %s Stream0 codec: %s Stream1 codec: %s", inputFormatContext->iformat->name, avcodec_get_name(inputFormatContext->streams[0]->codec->codec_id), avcodec_get_name(inputFormatContext->streams[1]->codec->codec_id) );
+    LOGI("Stream0 time_base: (num: %d, den: %d)", inputFormatContext->streams[0]->codec->time_base.num, inputFormatContext->streams[0]->codec->time_base.den);
+    LOGI("Stream1 time_base: (num: %d, den: %d)", inputFormatContext->streams[1]->codec->time_base.num, inputFormatContext->streams[1]->codec->time_base.den);
     return inputFormatContext;
 }
 
@@ -152,6 +159,11 @@ int writeFileTrailer(AVFormatContext *avfc){
 void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
   /* Standalone test copying input file to output, frame by frame */
 
+ // Ensure gdb is connected before proceeding
+ int i = 0;
+ while(i>0){
+	 i++;
+ }
   // Init
 
   init();
@@ -183,10 +195,13 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
   int writeFrameResult = 0;
   int frameCount = 0;
   while(continueRecording == 1){
+	  LOGI("pre av_read_frame");
       avReadResult = av_read_frame(inputFormatContext, inputPacket);
+      LOGI("post av_read_frame");
       frameCount++;
       if(avReadResult != 0){
         if (avReadResult != AVERROR_EOF) {
+        	LOGE("av_read_frame error");
             LOGE("av_read_frame error: %s", stringForAVErrorNumber(avReadResult));
         }else{
             LOGI("End of input file");
@@ -194,7 +209,12 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
 
         continueRecording = 0;
       }
+
+      AVStream *outStream = outputFormatContext->streams[inputPacket->stream_index];
+      LOGI("About to write packet");
+      //LOGI("About to write packet. pts: (val: %ld, num: %ls den: %ld), time_base: %d/%d", (long) outStream->pts.val, (long) outStream->pts.num, (long) outStream->pts.den, outStream->time_base.num, outStream->time_base.den);
       writeFrameResult = av_interleaved_write_frame(outputFormatContext, inputPacket);
+      LOGI("av_interleaved_write_frame");
       if(writeFrameResult < 0){
           LOGE("av_interleaved_write_frame error: %s", stringForAVErrorNumber(avReadResult));
       }
