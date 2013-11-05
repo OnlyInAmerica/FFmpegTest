@@ -37,7 +37,7 @@ public class HWRecorderActivity extends Activity {
     public void onRecordButtonClicked(View v){
         if(!recording){
             try {
-                chunkedHWRecorder = new ChunkedHWRecorder(getApplicationContext());
+                chunkedHWRecorder = new ChunkedHWRecorder();
                 chunkedHWRecorder.startRecording(null);
                 recording = true;
                 ((Button) v).setText("Stop Recording");

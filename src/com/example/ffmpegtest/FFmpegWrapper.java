@@ -5,60 +5,20 @@ import java.nio.ByteBuffer;
 import android.util.Log;
 
 /**
- * Work in Progress
- * First goal is to construct .ts files of constant length
- * given a series of interleaved, encoded audio / video frames
- *
- * Call shutdown() when FFmpegWrapper should not expect any more input
- * Any currently queued jobs will be finished.
+ * Work in Progress!
+ * The goal of this class is to mux output from 
+ * Android's MediaCodec into various outputs.
+ * My specific intent is to create segmented mpegts files
+ * and text manfiests suitable for HTTP-HLS
  */
 public class FFmpegWrapper {
 
     static {
         System.loadLibrary("FFmpegWrapper");
-        Log.i("why","not");
     }
 
-    /*
-    ExecutorService jobService = Executors.newSingleThreadExecutor();
+    public native void test();		// Successful test that copies an mp4 frame by frame. Relies on hardcoded paths for input / output...
 
-    public void shutdown(){
-        jobService.shutdown();
-    }
-
-    public void prepareAVFormatContext(final String outputPath){
-        jobService.submit(new Runnable() {
-            @Override
-            public void run() {
-                _prepareAVFormatContext(outputPath);
-            }
-        });
-    }
-
-    public void writeAVPacketFromEncodedData(final ByteBuffer data, final boolean isVideo, final int offset, final int size, final int flags, final long presentationTime){
-        jobService.submit(new Runnable() {
-            @Override
-            public void run() {
-                _writeAVPacketFromEncodedData(data, isVideo ? 1 : 0, offset, size, flags, presentationTime);
-            }
-        });
-    }
-
-    public void finalizeAVFormatContext(){
-        jobService.submit(new Runnable() {
-            @Override
-            public void run() {
-                _finalizeAVFormatContext();
-            }
-        });
-    }
-
-    */
-
-    public native void test();
-
-    // jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong presentationTimeUs
-    // .TS file generation from encoded data
     public native void prepareAVFormatContext(String jOutputPath);
     public native void writeAVPacketFromEncodedData(ByteBuffer jData, int jIsVideo, int jOffset, int jSize, int jFlags, long jPts);
     public native void finalizeAVFormatContext();

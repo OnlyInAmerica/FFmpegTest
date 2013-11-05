@@ -159,7 +159,9 @@ int writeFileTrailer(AVFormatContext *avfc){
   /////////////////////
 
 void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
-  /* Standalone test copying input file to output, frame by frame */
+  /* Standalone test copying input file to output, frame by frame
+   * I've confirmed this works. Pardon the hardcoded input/output paths
+   */
 
  // Ensure gdb is connected before proceeding
  int i = 0;
@@ -231,6 +233,15 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
   LOGI("Wrote trailer");
 }
 
+/*
+ * Prepares an AVFormatContext for output. For now,
+ * accomplish this with avformat_open_input on a file
+ * produced with Android's MediaMuxer that I've got on my device @ sampleFilePath
+ * Sorry this isn't portable :/ Can I craft an AVFormatContext given only
+ * the limited data Android's MediaFormat provides?
+ * see:  http://developer.android.com/reference/android/media/MediaFormat.html
+ * also: http://developer.android.com/reference/android/media/MediaCodec.html
+ */
 void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *env, jobject obj, jstring jOutputPath){
     init();
 
@@ -238,7 +249,6 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
     videoSourceTimeBase = av_malloc(sizeof(AVRational));
     videoSourceTimeBase->num = 1;
     videoSourceTimeBase->den = 1000000;
-    //videoSourceTimeBase->den = 30;
 
     audioSourceTimeBase = av_malloc(sizeof(AVRational));
 	audioSourceTimeBase->num = 1;
@@ -255,7 +265,6 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
     copyAVFormatContext(&outputFormatContext, &inputFormatContext);
     LOGI("post copyAVFormatContext");
 
-
     int result = openFileForWriting(outputFormatContext, outputPath);
     if(result < 0){
         LOGE("openFileForWriting error: %d", result);
@@ -264,23 +273,27 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
     writeFileHeader(outputFormatContext);
 }
 
+/*
+ * Consruct an AVPacket from MediaCodec output and call
+ * av_interleaved_write_frame with our AVFormatContext
+ */
 void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIEnv *env, jobject obj, jobject jData, jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong jPts){
     if(packet == NULL){
         packet = av_malloc(sizeof(AVPacket));
         LOGI("av_malloc packet");
     }
 
-    // jData is a ByteBuffer managed by Android's MediaCodec: a wrapper around the OMX interface
+    // jData is a ByteBuffer managed by Android's MediaCodec.
+    // Because the audo track of the resulting output mostly works, I'm inclined to rule out this data marshaling being an issue
     uint8_t *data = (*env)->GetDirectBufferAddress(env, jData);
-    //LOGI("writeAVPacketFromEncodedData video: %d length %d", (int) jIsVideo, (int) jSize);
 
     av_init_packet(packet);
 
 	if( ((int) jIsVideo) == JNI_TRUE){
-		packet->stream_index = 1; // TODO
-		// TODO: Apply bitstream filter
+		packet->stream_index = 1; // TODO do this right
+		// TODO: Apply bitstream filter for mpegts output
 	}else{
-		packet->stream_index = 0; // TODO
+		packet->stream_index = 0; // TODO do this right
 	}
 
     packet->size = (int) jSize;
@@ -289,12 +302,10 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
 	packet->pts = av_rescale_q(packet->pts, *videoSourceTimeBase, (outputFormatContext->streams[packet->stream_index]->time_base));
 
-    //LOGI("pre av_interleaved_write_frame");
     int writeFrameResult = av_interleaved_write_frame(outputFormatContext, packet);
     if(writeFrameResult < 0){
         LOGE("av_interleaved_write_frame error: %s", stringForAVErrorNumber(writeFrameResult));
     }
-    //LOGI("post write_frame");
     av_free_packet(packet);
 }
 
