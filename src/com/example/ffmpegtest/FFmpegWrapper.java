@@ -60,7 +60,7 @@ public class FFmpegWrapper {
     // jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong presentationTimeUs
     // .TS file generation from encoded data
     public native void prepareAVFormatContext(String jOutputPath);
-    public native void writeAVPacketFromEncodedData(ByteBuffer jData, int jIsVideo, int jOffset, int jSize, int jFlags, long jFrameCount);
+    public native void writeAVPacketFromEncodedData(ByteBuffer jData, int jIsVideo, int jOffset, int jSize, int jFlags, long jPts);
     public native void finalizeAVFormatContext();
 
 }

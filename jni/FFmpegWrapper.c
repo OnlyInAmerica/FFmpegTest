@@ -19,6 +19,8 @@ AVStream *audioStream;
 AVStream *videoStream;
 AVCodec *audioCodec;
 AVCodec *videoCodec;
+AVRational *videoSourceTimeBase;
+AVRational *audioSourceTimeBase;
 
 AVPacket *packet; // recycled across calls to writeAVPacketFromEncodedData
 
@@ -54,10 +56,10 @@ void copyAVFormatContext(AVFormatContext **dest, AVFormatContext **source){
         AVCodecContext *inputCodecContext = inputStream->codec;
 
         // Add new stream to output with codec from input stream
-        LOGI("Attempting to find encoder %s", avcodec_get_name(inputCodecContext->codec_id));
+        //LOGI("Attempting to find encoder %s", avcodec_get_name(inputCodecContext->codec_id));
         AVCodec *outputCodec = avcodec_find_encoder(inputCodecContext->codec_id);
         if(outputCodec == NULL){
-            LOGE("Unable to find encoder %s", avcodec_get_name(inputCodecContext->codec_id));
+            LOGI("Unable to find encoder %s", avcodec_get_name(inputCodecContext->codec_id));
         }
         AVStream *outputStream = avformat_new_stream(*dest, outputCodec);
         AVCodecContext *outputCodecContext = outputStream->codec;
@@ -232,6 +234,16 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
 void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *env, jobject obj, jstring jOutputPath){
     init();
 
+    // Create AVRational that expects timestamps in microseconds
+    videoSourceTimeBase = av_malloc(sizeof(AVRational));
+    videoSourceTimeBase->num = 1;
+    videoSourceTimeBase->den = 1000000;
+    //videoSourceTimeBase->den = 30;
+
+    audioSourceTimeBase = av_malloc(sizeof(AVRational));
+	audioSourceTimeBase->num = 1;
+	audioSourceTimeBase->den = 1000000;
+
     AVFormatContext *inputFormatContext;
     outputPath = (*env)->GetStringUTFChars(env, jOutputPath, NULL);
 
@@ -252,7 +264,7 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
     writeFileHeader(outputFormatContext);
 }
 
-void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIEnv *env, jobject obj, jobject jData, jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong jFrameCount){
+void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIEnv *env, jobject obj, jobject jData, jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong jPts){
     if(packet == NULL){
         packet = av_malloc(sizeof(AVPacket));
         LOGI("av_malloc packet");
@@ -260,33 +272,30 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
     // jData is a ByteBuffer managed by Android's MediaCodec: a wrapper around the OMX interface
     uint8_t *data = (*env)->GetDirectBufferAddress(env, jData);
-    LOGI("writeAVPacketFromEncodedData video: %d length %d", (int) jIsVideo, (int) jSize);
+    //LOGI("writeAVPacketFromEncodedData video: %d length %d", (int) jIsVideo, (int) jSize);
 
     av_init_packet(packet);
 
+	if( ((int) jIsVideo) == JNI_TRUE){
+		packet->stream_index = 1; // TODO
+		// TODO: Apply bitstream filter
+	}else{
+		packet->stream_index = 0; // TODO
+	}
+
     packet->size = (int) jSize;
     packet->data = data;
-    packet->pts = (int) jFrameCount;
-    //packet->dts = (int) jFrameCount;
+    packet->pts = (int) jPts;
 
-    // av_packet_from_data doesn't seem appropriate, as I don't want FFmpeg to manage data
+	packet->pts = av_rescale_q(packet->pts, *videoSourceTimeBase, (outputFormatContext->streams[packet->stream_index]->time_base));
 
-    if( ((int) jIsVideo) == JNI_TRUE){
-        LOGI("pre write_frame video");
-        packet->stream_index = 1; // TODO
-        // TODO: Apply bitstream filter
-    }else{
-        LOGI("pre write_frame audio");
-        packet->stream_index = 0; // TODO
-    }
-    LOGI("pre av_interleaved_write_frame");
+    //LOGI("pre av_interleaved_write_frame");
     int writeFrameResult = av_interleaved_write_frame(outputFormatContext, packet);
-    // Crash here:
-    // A/libc﹕ Fatal signal 8 (SIGFPE)
     if(writeFrameResult < 0){
         LOGE("av_interleaved_write_frame error: %s", stringForAVErrorNumber(writeFrameResult));
     }
-    LOGI("post write_frame");
+    //LOGI("post write_frame");
+    av_free_packet(packet);
 }
 
 void Java_com_example_ffmpegtest_FFmpegWrapper_finalizeAVFormatContext(JNIEnv *env, jobject obj){

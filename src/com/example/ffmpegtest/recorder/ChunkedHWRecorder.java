@@ -37,7 +37,6 @@ import java.util.List;
 
 import com.example.ffmpegtest.FFmpegWrapper;
 import com.example.ffmpegtest.FileUtils;
-import com.example.ffmpegtest.MediaRecorderWrapper;
 
 /**
  * Records video in gapless chunks of fixed duration.
@@ -59,7 +58,7 @@ public class ChunkedHWRecorder {
     private static final int VIDEO_HEIGHT = 480;
     private static final int FRAME_RATE = 30;               // 30fps
     private static final int IFRAME_INTERVAL = 5;           // 5 seconds between I-frames
-    private static final long CHUNK_DURATION_SEC = 5;       // Duration of video chunks
+    //private static final long CHUNK_DURATION_SEC = 999;       // Duration of video chunks
 
     // Display Surface
     private GLSurfaceView displaySurface;
@@ -67,8 +66,6 @@ public class ChunkedHWRecorder {
     private MediaCodec mVideoEncoder;
     private MediaCodec mAudioEncoder;
     private CodecInputSurface mInputSurface;
-    private MediaMuxerWrapper mMuxerWrapper;
-    private MediaMuxerWrapper mMuxerWrapper2;
     private TrackInfo mVideoTrackInfo;
     private TrackInfo mAudioTrackInfo;
     // camera state
@@ -109,10 +106,12 @@ public class ChunkedHWRecorder {
     public static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
     private AudioRecord audioRecord;
     private long lastEncodedAudioTimeStamp = 0;
+    
+    // Sync
+    public Object sync = new Object();
 
     // MediaRecorder
     boolean useMediaRecorder = false;
-    MediaRecorderWrapper mMediaRecorderWrapper;
 
     // FFmpegWrapper
     FFmpegWrapper ffmpeg = new FFmpegWrapper();
@@ -121,10 +120,7 @@ public class ChunkedHWRecorder {
 
     class TrackInfo {
         int index = 0;
-        MediaMuxerWrapper muxerWrapper;
     }
-
-
 
     public ChunkedHWRecorder(Context c){
         this.c = c;
@@ -156,7 +152,7 @@ public class ChunkedHWRecorder {
 
     private void _startRecording(String outputDir){
         int encBitRate = 1000000;      // bps
-        int framesPerChunk = (int) CHUNK_DURATION_SEC * FRAME_RATE;
+        //int framesPerChunk = (int) CHUNK_DURATION_SEC * FRAME_RATE;
         Log.d(TAG, VIDEO_MIME_TYPE + " output " + VIDEO_WIDTH + "x" + VIDEO_HEIGHT + " @" + encBitRate);
 
         try {
@@ -169,12 +165,16 @@ public class ChunkedHWRecorder {
             if (TRACE) Trace.endSection();
 
 
+            /*
             File outputHq = FileUtils.createTempFileInRootAppStorage(c, "hq.mp4");
             if (TRACE) Trace.beginSection("startMediaRecorder");
             if (useMediaRecorder) mMediaRecorderWrapper = new MediaRecorderWrapper(c, outputHq.getAbsolutePath(), mCamera);
+            */
             startAudioRecord();
+            /*
             if (useMediaRecorder) mMediaRecorderWrapper.startRecording();
             if (TRACE) Trace.endSection();
+            */
             startWhen = System.nanoTime();
 
             mCamera.startPreview();
@@ -184,10 +184,10 @@ public class ChunkedHWRecorder {
             while (!(fullStopReceived && eosSentToVideoEncoder)) {
                 // Feed any pending encoder output into the muxer.
                 // Chunk encoding
-                eosReceived = ((videoFrameCount % framesPerChunk) == 0 && videoFrameCount != 0);
-                if (eosReceived) Log.i(TAG, "Chunkpoint on frame " + videoFrameCount);
+                //eosReceived = ((videoFrameCount % framesPerChunk) == 0 && videoFrameCount != 0);
+                //if (eosReceived) Log.i(TAG, "Chunkpoint on frame " + videoFrameCount);
                 audioEosRequested = eosReceived;  // test
-                synchronized (mVideoTrackInfo.muxerWrapper.sync){
+                synchronized (sync){
                     if (TRACE) Trace.beginSection("drainVideo");
                     drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, eosReceived || fullStopReceived);
                     if (TRACE) Trace.endSection();
@@ -195,7 +195,7 @@ public class ChunkedHWRecorder {
                 if (fullStopReceived){
                     break;
                 }
-                videoFrameCount++;
+                //videoFrameCount++;
                 totalFrameCount++;
 
                 // Acquire a new frame of input, and render it to the Surface.  If we had a
@@ -245,7 +245,6 @@ public class ChunkedHWRecorder {
     public void stopRecording(){
         Log.i(TAG, "stopRecording");
         fullStopReceived = true;
-        if (useMediaRecorder) mMediaRecorderWrapper.stopRecording();
         double recordingDurationSec = (System.nanoTime() - startTime) / 1000000000.0;
         Log.i(TAG, "Recorded " + recordingDurationSec + " s. Expected " + (FRAME_RATE * recordingDurationSec) + " frames. Got " + totalFrameCount + " for " + (totalFrameCount / recordingDurationSec) + " fps");
     }
@@ -255,7 +254,6 @@ public class ChunkedHWRecorder {
      */
     public void _stopRecording(){
         fullStopPerformed = true;
-        mMediaRecorderWrapper.stopRecording();
         releaseCamera();
         releaseEncodersAndMuxer();
         releaseSurfaceTexture();
@@ -305,7 +303,7 @@ public class ChunkedHWRecorder {
                             audioRecord.stop();
                         }
 
-                        synchronized (mAudioTrackInfo.muxerWrapper.sync){
+                        synchronized (sync){
                             if (TRACE) Trace.beginSection("drainAudio");
                             drainEncoder(mAudioEncoder, mAudioBufferInfo, mAudioTrackInfo, audioEosRequestedCopy || fullStopReceived);
                             if (TRACE) Trace.endSection();
@@ -526,22 +524,6 @@ public class ChunkedHWRecorder {
         String outputPath = OUTPUT_DIR + "chunktest." + width + "x" + height + String.valueOf(leadingChunk) + ".mp4";
         Log.i(TAG, "Output file is " + outputPath);
 
-
-        // Create a MediaMuxer.  We can't add the video track and start() the muxer here,
-        // because our MediaFormat doesn't have the Magic Goodies.  These can only be
-        // obtained from the encoder after it has started processing data.
-        //
-        // We're not actually interested in multiplexing audio.  We just want to convert
-        // the raw H.264 elementary stream we get from MediaCodec into a .mp4 file.
-        //resetMediaMuxer(outputDirectory);
-        mMuxerWrapper = new MediaMuxerWrapper(OUTPUT_DIR, leadingChunk);
-        mMuxerWrapper2 = new MediaMuxerWrapper(OUTPUT_DIR, leadingChunk + 1); // prepared for next chunk
-
-
-        mVideoTrackInfo.index = -1;
-        mVideoTrackInfo.muxerWrapper = mMuxerWrapper;
-        mAudioTrackInfo.index = -1;
-        mAudioTrackInfo.muxerWrapper = mMuxerWrapper;
     }
 
     private void stopAndReleaseVideoEncoder(){
@@ -581,43 +563,11 @@ public class ChunkedHWRecorder {
         // Start Encoder
         mVideoBufferInfo = new MediaCodec.BufferInfo();
         //mVideoTrackInfo = new TrackInfo();
-        advanceVideoMediaMuxer();
         mVideoEncoder = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE);
         mVideoEncoder.configure(mVideoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mInputSurface.updateSurface(mVideoEncoder.createInputSurface());
         mVideoEncoder.start();
         mInputSurface.makeEncodeContextCurrent();
-    }
-
-    private void advanceVideoMediaMuxer(){
-        MediaMuxerWrapper videoMuxer = (mVideoTrackInfo.muxerWrapper == mMuxerWrapper) ? mMuxerWrapper : mMuxerWrapper2;
-        MediaMuxerWrapper audioMuxer = (mAudioTrackInfo.muxerWrapper == mMuxerWrapper) ? mMuxerWrapper : mMuxerWrapper2;
-        Log.i("advanceVideo", "video on " + ((mVideoTrackInfo.muxerWrapper == mMuxerWrapper) ? "muxer1" : "muxer2"));
-        if(videoMuxer == audioMuxer){
-            // if both encoders are on same muxer, switch to other muxer
-            leadingChunk++;
-            if(videoMuxer == mMuxerWrapper){
-                Log.i("advanceVideo", "encoders on same muxer. swapping.");
-                mVideoTrackInfo.muxerWrapper = mMuxerWrapper2;
-                // testing: can we start next muxer immediately given MediaCodec.getOutputFormat() values?
-
-            }else if(videoMuxer == mMuxerWrapper2){
-                Log.i("advanceVideo", "encoders on same muxer. swapping.");
-                mVideoTrackInfo.muxerWrapper = mMuxerWrapper;
-                // testing: can we start next muxer immediately given MediaCodec.getOutputFormat() values?
-            }
-            if(mVideoOutputFormat != null && mAudioOutputFormat != null){
-                mVideoTrackInfo.muxerWrapper.addTrack(mVideoOutputFormat);
-                mVideoTrackInfo.muxerWrapper.addTrack(mAudioOutputFormat);
-            }else{
-                Log.e(TAG, "mVideoOutputFormat or mAudioOutputFormat is null!");
-            }
-        }else{
-            // if encoders are separate, finalize this muxer, and switch to others
-            Log.i("advanceVideo", "encoders on diff muxers. restarting");
-            mVideoTrackInfo.muxerWrapper.restart(leadingChunk + 1); // prepare muxer for next chunk, but don't alter leadingChunk
-            mVideoTrackInfo.muxerWrapper = mAudioTrackInfo.muxerWrapper;
-        }
     }
 
     /**
@@ -629,37 +579,9 @@ public class ChunkedHWRecorder {
         // Start Encoder
         mAudioBufferInfo = new MediaCodec.BufferInfo();
         //mVideoTrackInfo = new TrackInfo();
-        advanceAudioMediaMuxer();
         mAudioEncoder = MediaCodec.createEncoderByType(AUDIO_MIME_TYPE);
         mAudioEncoder.configure(mAudioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mAudioEncoder.start();
-    }
-
-    private void advanceAudioMediaMuxer(){
-        MediaMuxerWrapper videoMuxer = (mVideoTrackInfo.muxerWrapper == mMuxerWrapper) ? mMuxerWrapper : mMuxerWrapper2;
-        MediaMuxerWrapper audioMuxer = (mAudioTrackInfo.muxerWrapper == mMuxerWrapper) ? mMuxerWrapper : mMuxerWrapper2;
-        Log.i("advanceAudio", "audio on " + ((mAudioTrackInfo.muxerWrapper == mMuxerWrapper) ? "muxer1" : "muxer2"));
-        if(videoMuxer == audioMuxer){
-            // If both encoders are on same muxer, switch to other muxer
-            Log.i("advanceAudio", "encoders on same muxer. swapping.");
-            leadingChunk++;
-            if(videoMuxer == mMuxerWrapper){
-                mAudioTrackInfo.muxerWrapper = mMuxerWrapper2;
-            }else if(videoMuxer == mMuxerWrapper2){
-                mAudioTrackInfo.muxerWrapper = mMuxerWrapper;
-            }
-            if(mVideoOutputFormat != null && mAudioOutputFormat != null){
-                mAudioTrackInfo.muxerWrapper.addTrack(mVideoOutputFormat);
-                mAudioTrackInfo.muxerWrapper.addTrack(mAudioOutputFormat);
-            }else{
-                Log.e(TAG, "mVideoOutputFormat or mAudioOutputFormat is null!");
-            }
-        }else{
-            // if encoders are separate, finalize this muxer, and switch to others
-            Log.i("advanceAudio", "encoders on diff muxers. restarting");
-            mAudioTrackInfo.muxerWrapper.restart(leadingChunk + 1); // prepare muxer for next chunk, but don't alter leadingChunk
-            mAudioTrackInfo.muxerWrapper = mVideoTrackInfo.muxerWrapper;
-        }
     }
 
     /**
@@ -668,18 +590,7 @@ public class ChunkedHWRecorder {
     private void releaseEncodersAndMuxer() {
         if (VERBOSE) Log.d(TAG, "releasing encoder objects");
         stopAndReleaseEncoders();
-        if (mMuxerWrapper != null) {
-            synchronized (mMuxerWrapper.sync){
-                mMuxerWrapper.stop();
-                mMuxerWrapper = null;
-            }
-        }
-        if (mMuxerWrapper2 != null) {
-            synchronized (mMuxerWrapper2.sync){
-                mMuxerWrapper2.stop();
-                mMuxerWrapper2 = null;
-            }
-        }
+        // TODO: Finalize ffmpeg
     }
 
     /**
@@ -695,16 +606,12 @@ public class ChunkedHWRecorder {
     private void drainEncoder(MediaCodec encoder, MediaCodec.BufferInfo bufferInfo, TrackInfo trackInfo, boolean endOfStream) {
         final int TIMEOUT_USEC = 100;
 
-        //TODO: Get Muxer from trackInfo
-        MediaMuxerWrapper muxerWrapper = trackInfo.muxerWrapper;
-
         if (VERBOSE) Log.d(TAG, "drain" + ((encoder == mVideoEncoder) ? "Video" : "Audio") + "Encoder(" + endOfStream + ")");
         if (endOfStream && encoder == mVideoEncoder) {
             if (VERBOSE) Log.d(TAG, "sending EOS to " + ((encoder == mVideoEncoder) ? "video" : "audio") + " encoder");
             encoder.signalEndOfInputStream();
             eosSentToVideoEncoder = true;
         }
-        //testing
         ByteBuffer[] encoderOutputBuffers = encoder.getOutputBuffers();
 
         while (true) {
@@ -723,21 +630,19 @@ public class ChunkedHWRecorder {
             } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 // should happen before receiving buffers, and should only happen once
 
-                if (muxerWrapper.started) {
-                    //Log.e(TAG, "format changed after muxer start! Can we ignore?");
-                    //throw new RuntimeException("format changed after muxer start");
-                }else{
-                    MediaFormat newFormat = encoder.getOutputFormat();
-                    if(encoder == mVideoEncoder)
-                        mVideoOutputFormat = newFormat;
-                    else if(encoder == mAudioEncoder)
-                        mAudioOutputFormat = newFormat;
+            	// Used to check muxer had started before executing this block
+                MediaFormat newFormat = encoder.getOutputFormat();
+                if(encoder == mVideoEncoder)
+                    mVideoOutputFormat = newFormat;
+                else if(encoder == mAudioEncoder)
+                    mAudioOutputFormat = newFormat;
 
-                    // now that we have the Magic Goodies, start the muxer
-                    trackInfo.index = muxerWrapper.addTrack(newFormat);
-                    if(!muxerWrapper.allTracksAdded())
-                        break;  // Allow both encoders to send output format changed before attempting to write samples
-                }
+                // now that we have the Magic Goodies, start the muxer
+                /*
+                trackInfo.index = muxerWrapper.addTrack(newFormat);
+                if(!muxerWrapper.allTracksAdded())
+                    break;  // Allow both encoders to send output format changed before attempting to write samples
+                */
 
             } else if (encoderStatus < 0) {
                 Log.w(TAG, "unexpected result from encoder.dequeueOutputBuffer: " +
@@ -754,34 +659,41 @@ public class ChunkedHWRecorder {
                     // The codec config data was pulled out and fed to the muxer when we got
                     // the INFO_OUTPUT_FORMAT_CHANGED status.  Ignore it.
                     if (VERBOSE) Log.d(TAG, "ignoring BUFFER_FLAG_CODEC_CONFIG");
+                    Log.i("FFmpegWrapper", "Sending CODEC_CONFIG data");
+                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags,  (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++);
                     bufferInfo.size = 0;
                 }
 
 
                 if (bufferInfo.size != 0) {
+                	/*
                     if (!trackInfo.muxerWrapper.started) {
                         Log.e(TAG, "Muxer not started. dropping " + ((encoder == mVideoEncoder) ? " video" : " audio") + " frames");
                         //throw new RuntimeException("muxer hasn't started");
                     } else{
-                        // adjust the ByteBuffer values to match BufferInfo (not needed?)
-                        encodedData.position(bufferInfo.offset);
-                        encodedData.limit(bufferInfo.offset + bufferInfo.size);
-                        if(encoder == mAudioEncoder){
-                            if(bufferInfo.presentationTimeUs < lastEncodedAudioTimeStamp){
-                                bufferInfo.presentationTimeUs = lastEncodedAudioTimeStamp += 23219; // Magical AAC encoded frame time
-                                Log.w(TAG, "received non-increasing audio pts. adjusting.");
-                            }
-                                lastEncodedAudioTimeStamp = bufferInfo.presentationTimeUs;
+                    */
+                    // adjust the ByteBuffer values to match BufferInfo (not needed?)
+                    encodedData.position(bufferInfo.offset);
+                    encodedData.limit(bufferInfo.offset + bufferInfo.size);
+                    if(encoder == mAudioEncoder){
+                        if(bufferInfo.presentationTimeUs < lastEncodedAudioTimeStamp){
+                            bufferInfo.presentationTimeUs = lastEncodedAudioTimeStamp += 23219; // Magical AAC encoded frame time
+                            Log.w(TAG, "received non-increasing audio pts. adjusting.");
                         }
-                        if(bufferInfo.presentationTimeUs < 0){
-                            bufferInfo.presentationTimeUs = 0;
-                        }
-                        muxerWrapper.writeSampleData(trackInfo.index, encodedData, bufferInfo);
-                        ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags,  (encoder == mVideoEncoder) ? videoFrameCount : audioFrameCount);
-                        if (VERBOSE)
-                            Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
-
+                            lastEncodedAudioTimeStamp = bufferInfo.presentationTimeUs;
                     }
+                    if(bufferInfo.presentationTimeUs < 0){
+                        bufferInfo.presentationTimeUs = 0;
+                    }
+                    
+                    //muxerWrapper.writeSampleData(trackInfo.index, encodedData, bufferInfo);
+                    //Log.i("FFmpegWrapper", String.format("video: %d, length %d", (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.size));
+                    //Log.i("FFmpegWrapper", String.format("Sending pts: %d offset: %d flags: %d", (encoder == mVideoEncoder) ? videoFrameCount+1 : audioFrameCount+1, bufferInfo.offset, bufferInfo.offset));
+                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs);
+                    if (VERBOSE)
+                        Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
+
+                    /*}*/
                 }
 
                 encoder.releaseOutputBuffer(encoderStatus, false);
@@ -790,7 +702,8 @@ public class ChunkedHWRecorder {
                     if (!endOfStream) {
                         Log.w(TAG, "reached end of stream unexpectedly");
                     } else {
-                        muxerWrapper.finishTrack();
+                        //muxerWrapper.finishTrack();
+                    	Log.i(TAG, "end of " + ((encoder == mVideoEncoder) ? " video" : " audio") + " stream reached. ");
                         if (VERBOSE) Log.d(TAG, "end of " + ((encoder == mVideoEncoder) ? " video" : " audio") + " stream reached. ");
                         if(!fullStopReceived){
                             if(encoder == mVideoEncoder){
