@@ -1,5 +1,5 @@
 # FFmpegTest
-An attempt to feed encoded Audio and Video data from Android's MediaCodec to FFmpeg to provide support for formats beyond Android's capabilities (Android's MediaMuxer is currently limited to .mp4). Our deep ulteriour motive is to generate HLS streams on device. 
+An attempt to feed encoded Audio and Video data from Android's MediaCodec to FFmpeg to provide support for formats beyond Android's capabilities (Android's MediaMuxer is currently limited to .mp4). Our ultimate goal is to allow an Android device to act as an HLS server. 
 
 Included is a build of the ffmpeg 2.0.2 libraries for arm linux with debugging symbols enabled, and no optimizations.
 
@@ -7,7 +7,7 @@ Included is a build of the ffmpeg 2.0.2 libraries for arm linux with debugging s
 
 Camera frames and Microphone samples are queued into instances of Android's [MediaCodec](http://developer.android.com/reference/android/media/MediaCodec.html), which performs the encoding in hardware. We poll MediaCodec after submitting each audio / video  to dequeue encoded data and pass it to FFmpeg.
 
-There are three JNI methods that bridge the tested Java/Android logic to FFmpeg. Their Java definitions are in FFmpegWrapper.java, their C implementations in FFmpegWrapper.c
+There are three JNI methods that bridge the tested Java/Android logic to FFmpeg. Their Java definitions are in [FFmpegWrapper.java](https://github.com/OnlyInAmerica/FFmpegTest/blob/master/src/com/example/ffmpegtest/FFmpegWrapper.java), and their C implementations in [FFmpegWrapper.c](https://github.com/OnlyInAmerica/FFmpegTest/blob/master/jni/FFmpegWrapper.c).
 
 + `prepareAVFormatContext(String outputPath);`
      + Prepares an `AVFormatContext` for output, currently by reading from an mp4 prepared using Android's MediaMuxer and identical codec parameters.
@@ -18,7 +18,7 @@ There are three JNI methods that bridge the tested Java/Android logic to FFmpeg.
 
 # Current Output
 
-A video produce with this application is available [here](https://s3.amazonaws.com/dbro/ffmpeg_d8cb9b8.mp4).
+A video produced with this application is available [here](https://s3.amazonaws.com/dbro/ffmpeg_d8cb9b8.mp4).
 
 Playing the output of this app in VLC results in generally correct audio and blank / black video frames. 
 
