@@ -1,5 +1,7 @@
 # FFmpegTest
-An attempt to feed encoded Audio and Video data from Android's MediaCodec to FFmpeg in order to generate an HLS stream. Included is a build of the ffmpeg 2.0.2 libraries for arm linux with debugging symbols enabled, and no optimizations.
+An attempt to feed encoded Audio and Video data from Android's MediaCodec to FFmpeg to provide support for formats beyond Android's capabilities (Android's MediaMuxer is currently limited to .mp4). Our deep ulteriour motive is to generate HLS streams on device. 
+
+Included is a build of the ffmpeg 2.0.2 libraries for arm linux with debugging symbols enabled, and no optimizations.
 
 # Overview
 
@@ -7,16 +9,16 @@ Camera frames and Microphone samples are queued into instances of Android's [Med
 
 There are three JNI methods that bridge the tested Java/Android logic to FFmpeg. Their Java definitions are in FFmpegWrapper.java, their C implementations in FFmpegWrapper.c
 
- + `prepareAVFormatContext(String outputPath);`
++ `prepareAVFormatContext(String outputPath);`
      + Prepares an `AVFormatContext` for output, currently by reading from an mp4 prepared using Android's MediaMuxer and identical codec parameters.
- + `writeAVPacketFromEncodedData(ByteBuffer jData, int jIsVideo, int jOffset, int jSize, int jFlags, long jPts);`
++ `writeAVPacketFromEncodedData(ByteBuffer jData, int jIsVideo, int jOffset, int jSize, int jFlags, long jPts);`
      + Prepares an `AVPacket` from MediaCodec encoder output and submits it to FFmpeg via `av_interleaved_write_frame(...)`, along with the `AVFormatContext` created with the first method.
 + `finalizeAVFormatContext();`
      + Finalizes our `AVFormatContext` with `av_write_trailer(...)`
 
 # Current Output
 
-Playing the app's output in VLC results in generally correct audio and blank / black video frames. 
+Playing the output of this app in VLC results in generally correct audio and blank / black video frames. 
 
 ffprobe reports:
 
