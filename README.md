@@ -18,6 +18,8 @@ There are three JNI methods that bridge the tested Java/Android logic to FFmpeg.
 
 # Current Output
 
+A video produce with this application is available [here](https://s3.amazonaws.com/dbro/ffmpeg_d8cb9b8.mp4).
+
 Playing the output of this app in VLC results in generally correct audio and blank / black video frames. 
 
 ffprobe reports:
