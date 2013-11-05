@@ -4,10 +4,11 @@
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 
-
 #define LOG_TAG "FFmpegWrapper"
 #define LOGI(...)  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+
 
 // Current output
 const char *outputPath;
@@ -26,6 +27,9 @@ AVPacket *packet; // recycled across calls to writeAVPacketFromEncodedData
 
 // Example h264 file:
 const char *sampleFilePath = "/sdcard/sample.mp4";
+
+// Testing
+int videoFrameCount = 0;
 
 // FFmpeg Utilities
 
@@ -283,9 +287,22 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
         LOGI("av_malloc packet");
     }
 
+    if( ((int) jIsVideo) == JNI_TRUE ){
+    	videoFrameCount++;
+    }
+
     // jData is a ByteBuffer managed by Android's MediaCodec.
     // Because the audo track of the resulting output mostly works, I'm inclined to rule out this data marshaling being an issue
     uint8_t *data = (*env)->GetDirectBufferAddress(env, jData);
+
+    if(((int) jSize ) < 15){
+    	if( ((int) jIsVideo) == JNI_TRUE ){
+    		LOGI("video: %d data: %s size: %d packet: %d", (int) jIsVideo, (char*)data, (int) jSize, videoFrameCount);
+    	}else{
+    		LOGI("video: %d data: %s size: %d", (int) jIsVideo, data, (int) jSize);
+    	}
+    	return;
+    }
 
     av_init_packet(packet);
 

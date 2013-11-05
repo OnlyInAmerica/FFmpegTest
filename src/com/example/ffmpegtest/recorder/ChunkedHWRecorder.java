@@ -610,9 +610,10 @@ public class ChunkedHWRecorder {
                 	// Perhaps we should concentrate on setting FFmpeg's
                 	// AVCodecContext from Android's MediaFormat
                 	
-                    if (VERBOSE) Log.d(TAG, "got BUFFER_FLAG_CODEC_CONFIG");
-                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags,  (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++);
-                    bufferInfo.size = 0;	// prevent the
+                    if (VERBOSE) Log.d(TAG, "ignoring BUFFER_FLAG_CODEC_CONFIG");
+                    
+                    //ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
+                    bufferInfo.size = 0;	// prevent writing as normal packet
                 }
 
                 if (bufferInfo.size != 0) {
@@ -628,6 +629,7 @@ public class ChunkedHWRecorder {
                     // Previously, we'd write to Android's MediaMuxer here:
                     //muxerWrapper.writeSampleData(trackInfo.index, encodedData, bufferInfo);
                     ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs);
+                    Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
                     if (VERBOSE)
                         Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
                 }
