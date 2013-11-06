@@ -12,7 +12,7 @@
 
 // Current output
 const char *outputPath;
-const char *outputFormatName = "mp4";
+const char *outputFormatName = "mpegts";
 const char *videoCodecName = "h264";
 const char *audioCodecName = "aac";
 AVFormatContext *outputFormatContext;
@@ -26,10 +26,12 @@ AVRational *audioSourceTimeBase;
 AVPacket *packet; // recycled across calls to writeAVPacketFromEncodedData
 
 // Example h264 file:
-const char *sampleFilePath = "/sdcard/sample.mp4";
+const char *sampleFilePath = "/sdcard/sample.ts";
 
 // Testing
 int videoFrameCount = 0;
+
+FILE *raw_video;
 
 // FFmpeg Utilities
 
@@ -37,6 +39,7 @@ void init(){
     av_register_all();
     avformat_network_init();
     avcodec_register_all();
+    raw_video = fopen("/sdcard/raw.h264", "w");
 }
 
 char* stringForAVErrorNumber(int errorNumber){
@@ -65,15 +68,15 @@ void copyAVFormatContext(AVFormatContext **dest, AVFormatContext **source){
         if(outputCodec == NULL){
             LOGI("Unable to find encoder %s", avcodec_get_name(inputCodecContext->codec_id));
         }
-        AVStream *outputStream = avformat_new_stream(*dest, outputCodec);
-        AVCodecContext *outputCodecContext = outputStream->codec;
 
-        // Copy input stream's codecContext for output stream's codecContext
-        avcodec_copy_context(outputCodecContext, inputCodecContext);
-        outputCodecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
+		AVStream *outputStream = avformat_new_stream(*dest, outputCodec);
+		AVCodecContext *outputCodecContext = outputStream->codec;
 
-        LOGI("copyAVFormatContext Copied stream %d with codec %s sample_fmt %s", i, avcodec_get_name(inputCodecContext->codec_id), av_get_sample_fmt_name(inputCodecContext->sample_fmt));
+		// Copy input stream's codecContext for output stream's codecContext
+		avcodec_copy_context(outputCodecContext, inputCodecContext);
+		outputCodecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
 
+		LOGI("copyAVFormatContext Copied stream %d with codec %s sample_fmt %s", i, avcodec_get_name(inputCodecContext->codec_id), av_get_sample_fmt_name(inputCodecContext->sample_fmt));
     }
 }
 
@@ -155,6 +158,7 @@ int writeFileHeader(AVFormatContext *avfc){
 }
 
 int writeFileTrailer(AVFormatContext *avfc){
+	fclose(raw_video);
     return av_write_trailer(avfc);
 }
 
@@ -295,6 +299,10 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
     // Because the audo track of the resulting output mostly works, I'm inclined to rule out this data marshaling being an issue
     uint8_t *data = (*env)->GetDirectBufferAddress(env, jData);
 
+    if( ((int) jIsVideo) == JNI_TRUE ){
+    	fwrite(data, sizeof(uint8_t), (int)jSize, raw_video);
+    }
+
     if(((int) jSize ) < 15){
     	if( ((int) jIsVideo) == JNI_TRUE ){
     		LOGI("video: %d data: %s size: %d packet: %d", (int) jIsVideo, (char*)data, (int) jSize, videoFrameCount);
@@ -307,10 +315,9 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
     av_init_packet(packet);
 
 	if( ((int) jIsVideo) == JNI_TRUE){
-		packet->stream_index = 1; // TODO do this right
-		// TODO: Apply bitstream filter for mpegts output
-	}else{
 		packet->stream_index = 0; // TODO do this right
+	}else{
+		packet->stream_index = 1; // TODO do this right
 	}
 
     packet->size = (int) jSize;

@@ -27,6 +27,8 @@ import android.os.Trace;
 import android.util.Log;
 import android.view.Surface;
 
+import java.io.BufferedWriter;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -119,6 +121,7 @@ public class ChunkedHWRecorder {
     public void startRecording(final String outputDir){
         if(outputDir != null)
             OUTPUT_DIR = outputDir;
+
         ffmpeg.prepareAVFormatContext(OUTPUT_DIR + "ffmpeg_" + System.currentTimeMillis() + ".mp4");
         new Thread(new Runnable(){
 
@@ -602,6 +605,7 @@ public class ChunkedHWRecorder {
                             " was null");
                 }
 
+                
                 if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
                     // Previously we ignored this state due to having fed Android's
                 	// MediaFormat to MediaMuxer. See above condition for:
@@ -612,11 +616,25 @@ public class ChunkedHWRecorder {
                 	
                     if (VERBOSE) Log.d(TAG, "ignoring BUFFER_FLAG_CODEC_CONFIG");
                     
-                    //ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
+                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
                     bufferInfo.size = 0;	// prevent writing as normal packet
                 }
+                	
+                int ADTS_LENGTH = 7;
 
                 if (bufferInfo.size != 0) {
+                	if(encoder == mAudioEncoder){
+	                	int outBitsSize = bufferInfo.size;
+	                	int outPacketSize = outBitsSize + ADTS_LENGTH;
+	                	
+	                	byte[] data = new byte[outPacketSize];  //space for ADTS header included
+	                    addADTStoPacket(data, outPacketSize);
+	                    encodedData.get(data, ADTS_LENGTH, outBitsSize);
+	                    encodedData.position(bufferInfo.offset);
+	                    encodedData.put(data);
+	                    bufferInfo.size = outPacketSize;
+	                    
+                	}
                     // adjust the ByteBuffer values to match BufferInfo (not needed?)
                     encodedData.position(bufferInfo.offset);
                     encodedData.limit(bufferInfo.offset + bufferInfo.size);
@@ -629,7 +647,6 @@ public class ChunkedHWRecorder {
                     // Previously, we'd write to Android's MediaMuxer here:
                     //muxerWrapper.writeSampleData(trackInfo.index, encodedData, bufferInfo);
                     ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs);
-                    Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
                     if (VERBOSE)
                         Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
                 }
@@ -653,6 +670,29 @@ public class ChunkedHWRecorder {
                 }
             }
         }
+    }
+    
+    /**
+     *  Add ADTS header at the beginning of each and every AAC packet.
+     *  This is needed as MediaCodec encoder generates a packet of raw
+     *  AAC data.
+     *
+     *  Note the packetLen must count in the ADTS header itself.
+     **/
+    private void addADTStoPacket(byte[] packet, int packetLen) {
+        int profile = 2;  //AAC LC
+                          //39=MediaCodecInfo.CodecProfileLevel.AACObjectELD;
+        int freqIdx = 4;  //44.1KHz
+        int chanCfg = 2;  //CPE
+
+        // fill in ADTS data
+        packet[0] = (byte)0xFF;
+        packet[1] = (byte)0xF9;
+        packet[2] = (byte)(((profile-1)<<6) + (freqIdx<<2) +(chanCfg>>2));
+        packet[3] = (byte)(((chanCfg&3)<<6) + (packetLen>>11));
+        packet[4] = (byte)((packetLen&0x7FF) >> 3);
+        packet[5] = (byte)(((packetLen&7)<<5) + 0x1F);
+        packet[6] = (byte)0xFC;
     }
 
 
