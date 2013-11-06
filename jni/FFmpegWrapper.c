@@ -1,3 +1,20 @@
+/*
+ * Copyright (c) 2013, David Brodsky. All rights reserved.
+ *
+ *	This program is free software: you can redistribute it and/or modify
+ *	it under the terms of the GNU General Public License as published by
+ *	the Free Software Foundation, either version 3 of the License, or
+ *	(at your option) any later version.
+ *
+ *	This program is distributed in the hope that it will be useful,
+ *	but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *	GNU General Public License for more details.
+ *
+ *	You should have received a copy of the GNU General Public License
+ *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
 #include <jni.h>
 #include <android/log.h>
 #include <string.h>
@@ -8,9 +25,7 @@
 #define LOGI(...)  __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
 #define LOGE(...)  __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 
-
-
-// Current output
+// Output
 const char *outputPath;
 const char *outputFormatName = "mpegts";
 const char *videoCodecName = "h264";
@@ -25,11 +40,12 @@ AVRational *audioSourceTimeBase;
 
 AVPacket *packet; // recycled across calls to writeAVPacketFromEncodedData
 
-// Example h264 file:
+// Example h264 file: Used to configure AVFormatContext
 const char *sampleFilePath = "/sdcard/sample.ts";
 
-// Testing
+// Debugging
 int videoFrameCount = 0;
+int WRITE_RAW_FILE = 0;		// Write raw packets to file
 
 FILE *raw_video;
 
@@ -39,7 +55,10 @@ void init(){
     av_register_all();
     avformat_network_init();
     avcodec_register_all();
-    raw_video = fopen("/sdcard/raw.h264", "w");
+
+    if(WRITE_RAW_FILE){
+    	raw_video = fopen("/sdcard/raw.h264", "w");
+    }
 }
 
 char* stringForAVErrorNumber(int errorNumber){
@@ -69,14 +88,14 @@ void copyAVFormatContext(AVFormatContext **dest, AVFormatContext **source){
             LOGI("Unable to find encoder %s", avcodec_get_name(inputCodecContext->codec_id));
         }
 
-		AVStream *outputStream = avformat_new_stream(*dest, outputCodec);
-		AVCodecContext *outputCodecContext = outputStream->codec;
+			AVStream *outputStream = avformat_new_stream(*dest, outputCodec);
+			AVCodecContext *outputCodecContext = outputStream->codec;
 
-		// Copy input stream's codecContext for output stream's codecContext
-		avcodec_copy_context(outputCodecContext, inputCodecContext);
-		outputCodecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
+			// Copy input stream's codecContext for output stream's codecContext
+			avcodec_copy_context(outputCodecContext, inputCodecContext);
+			outputCodecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL;
 
-		LOGI("copyAVFormatContext Copied stream %d with codec %s sample_fmt %s", i, avcodec_get_name(inputCodecContext->codec_id), av_get_sample_fmt_name(inputCodecContext->sample_fmt));
+			LOGI("copyAVFormatContext Copied stream %d with codec %s sample_fmt %s", i, avcodec_get_name(inputCodecContext->codec_id), av_get_sample_fmt_name(inputCodecContext->sample_fmt));
     }
 }
 
@@ -158,7 +177,9 @@ int writeFileHeader(AVFormatContext *avfc){
 }
 
 int writeFileTrailer(AVFormatContext *avfc){
-	fclose(raw_video);
+	if(WRITE_RAW_FILE){
+		fclose(raw_video);
+	}
     return av_write_trailer(avfc);
 }
 
@@ -299,7 +320,7 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
     // Because the audo track of the resulting output mostly works, I'm inclined to rule out this data marshaling being an issue
     uint8_t *data = (*env)->GetDirectBufferAddress(env, jData);
 
-    if( ((int) jIsVideo) == JNI_TRUE ){
+    if( WRITE_RAW_FILE && ((int) jIsVideo) == JNI_TRUE ){
     	fwrite(data, sizeof(uint8_t), (int)jSize, raw_video);
     }
 

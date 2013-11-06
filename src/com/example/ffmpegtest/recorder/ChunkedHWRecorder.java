@@ -1,4 +1,26 @@
 /*
+ * Copyright (c) 2013, David Brodsky. All rights reserved.
+ *
+ *	This program is free software: you can redistribute it and/or modify
+ *	it under the terms of the GNU General Public License as published by
+ *	the Free Software Foundation, either version 3 of the License, or
+ *	(at your option) any later version.
+ *	
+ *	This program is distributed in the hope that it will be useful,
+ *	but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *	MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *	GNU General Public License for more details.
+ *	
+ *	You should have received a copy of the GNU General Public License
+ *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+/*
+ * This file was derived from work authored by the Android Open Source Project
+ * Specifically http://bigflake.com/mediacodec/CameraToMpegTest.java.txt
+ * Below is the original license, but note this adaptation is 
+ * licensed under GPLv3
+ * 
  * Copyright 2013 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
@@ -14,8 +36,7 @@
  * limitations under the License.
  */
 
-// Enormous thanks to Andrew McFadden for his MediaCodec examples!
-// Adapted from http://bigflake.com/mediacodec/CameraToMpegTest.java.txt
+// Enormous thanks to Andrew McFadden for his MediaCodec work!
 
 package com.example.ffmpegtest.recorder;
 
@@ -81,6 +102,10 @@ public class ChunkedHWRecorder {
     // Audio sampling interface
     private AudioRecord audioRecord;
     
+    // Recycled storage for Audio packets as we write ADTS header
+    byte[] audioPacket = new byte[2048]; 
+    int ADTS_LENGTH = 7;	// ADTS Header length
+    
     // Camera
     private Camera mCamera;
     private SurfaceTextureManager mStManager;
@@ -122,7 +147,7 @@ public class ChunkedHWRecorder {
         if(outputDir != null)
             OUTPUT_DIR = outputDir;
 
-        ffmpeg.prepareAVFormatContext(OUTPUT_DIR + "ffmpeg_" + System.currentTimeMillis() + ".mp4");
+        ffmpeg.prepareAVFormatContext(OUTPUT_DIR + "ffmpeg_" + System.currentTimeMillis() + ".ts");
         new Thread(new Runnable(){
 
             @Override
@@ -620,18 +645,18 @@ public class ChunkedHWRecorder {
                     bufferInfo.size = 0;	// prevent writing as normal packet
                 }
                 	
-                int ADTS_LENGTH = 7;
+                
 
                 if (bufferInfo.size != 0) {
                 	if(encoder == mAudioEncoder){
 	                	int outBitsSize = bufferInfo.size;
 	                	int outPacketSize = outBitsSize + ADTS_LENGTH;
 	                	
-	                	byte[] data = new byte[outPacketSize];  //space for ADTS header included
-	                    addADTStoPacket(data, outPacketSize);
-	                    encodedData.get(data, ADTS_LENGTH, outBitsSize);
+	                	//byte[] data = new byte[outPacketSize];  //space for ADTS header included
+	                	addADTStoPacket(audioPacket, outPacketSize);
+	                    encodedData.get(audioPacket, ADTS_LENGTH, outBitsSize);
 	                    encodedData.position(bufferInfo.offset);
-	                    encodedData.put(data);
+	                    encodedData.put(audioPacket, 0, outPacketSize);
 	                    bufferInfo.size = outPacketSize;
 	                    
                 	}
@@ -678,6 +703,8 @@ public class ChunkedHWRecorder {
      *  AAC data.
      *
      *  Note the packetLen must count in the ADTS header itself.
+     *  See: http://wiki.multimedia.cx/index.php?title=ADTS
+     *  Also: http://wiki.multimedia.cx/index.php?title=MPEG-4_Audio#Channel_Configurations
      **/
     private void addADTStoPacket(byte[] packet, int packetLen) {
         int profile = 2;  //AAC LC
