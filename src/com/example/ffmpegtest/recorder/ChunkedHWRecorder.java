@@ -493,7 +493,7 @@ public class ChunkedHWRecorder {
         mAudioFormat = new MediaFormat();
         mAudioFormat.setString(MediaFormat.KEY_MIME, AUDIO_MIME_TYPE);
         mAudioFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
-        mAudioFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, 44100);
+        mAudioFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, SAMPLE_RATE);
         mAudioFormat.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
         mAudioFormat.setInteger(MediaFormat.KEY_BIT_RATE, 128000);
         mAudioFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384);
@@ -683,11 +683,11 @@ public class ChunkedHWRecorder {
         int profile = 2;  //AAC LC
                           //39=MediaCodecInfo.CodecProfileLevel.AACObjectELD;
         int freqIdx = 4;  //44.1KHz
-        int chanCfg = 2;  //CPE
+        int chanCfg = 1;  //MPEG-4 Audio Channel Configuration. 1 Channel front-center
 
         // fill in ADTS data
-        packet[0] = (byte)0xFF;
-        packet[1] = (byte)0xF9;
+        packet[0] = (byte)0xFF;	// 11111111  	= syncword
+        packet[1] = (byte)0xF9;	// 1111 1 00 1  = syncword MPEG-2 Layer CRC
         packet[2] = (byte)(((profile-1)<<6) + (freqIdx<<2) +(chanCfg>>2));
         packet[3] = (byte)(((chanCfg&3)<<6) + (packetLen>>11));
         packet[4] = (byte)((packetLen&0x7FF) >> 3);
