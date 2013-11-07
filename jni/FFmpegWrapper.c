@@ -28,8 +28,21 @@
 // Output
 const char *outputPath;
 const char *outputFormatName = "mpegts";
-const char *videoCodecName = "h264";
-const char *audioCodecName = "aac";
+int audioStreamIndex = -1;
+int videoStreamIndex = -1;
+
+// Video
+int VIDEO_PIX_FMT = PIX_FMT_YUV420P;
+int VIDEO_CODEC_ID = CODEC_ID_H264;
+int VIDEO_WIDTH = 640;
+int VIDEO_HEIGHT = 480;
+
+// Audio
+int AUDIO_CODEC_ID = CODEC_ID_AAC;
+int AUDIO_SAMPLE_FMT = AV_SAMPLE_FMT_S16;
+int AUDIO_SAMPLE_RATE = 44100;
+int AUDIO_CHANNELS = 1;
+
 AVFormatContext *outputFormatContext;
 AVStream *audioStream;
 AVStream *videoStream;
@@ -70,6 +83,100 @@ char* stringForAVErrorNumber(int errorNumber){
         return NULL;
     }
     return errorBuffer;
+}
+
+void addVideoStream(AVFormatContext *dest){
+	AVCodecContext *c;
+	AVStream *st;
+	AVCodec *codec;
+
+	/* find the video encoder */
+	codec = avcodec_find_encoder(VIDEO_CODEC_ID);
+	if (!codec) {
+		LOGE("add_video_stream codec not found");
+	}
+
+	st = avformat_new_stream(dest, codec);
+	if (!st) {
+		LOGE("add_video_stream could not alloc stream");
+	}
+
+	videoStreamIndex = st->index;
+	LOGI("addVideoStream at index %d", videoStreamIndex);
+	c = st->codec;
+
+	avcodec_get_context_defaults3(c, codec);
+
+	c->codec_id = VIDEO_CODEC_ID;
+
+	/* Put sample parameters. */
+	// c->bit_rate = 400000;
+	/* Resolution must be a multiple of two. */
+	c->width    = VIDEO_WIDTH;
+	c->height   = VIDEO_HEIGHT;
+
+	/* timebase: This is the fundamental unit of time (in seconds) in terms
+	 * of which frame timestamps are represented. For fixed-fps content,
+	 * timebase should be 1/framerate and timestamp increments should be
+	 * identical to 1. */
+	c->time_base.den = 30;
+	c->time_base.num = 1;
+	/*
+	c->gop_size      = 12; // emit one intra frame every twelve frames at most
+	*/
+	c->pix_fmt       = VIDEO_PIX_FMT;
+
+	/* Not encoding
+	if(codec_id == CODEC_ID_H264){
+			av_opt_set(c->priv_data, "preset", "ultrafast", 0);
+			if(crf)
+					av_opt_set_double(c->priv_data, "crf", crf, 0);
+			else
+					av_opt_set_double(c->priv_data, "crf", 24.0, 0);
+	}
+	*/
+
+	/* Some formats want stream headers to be separate. */
+	if (dest->oformat->flags & AVFMT_GLOBALHEADER)
+		c->flags |= CODEC_FLAG_GLOBAL_HEADER;
+
+}
+
+void addAudioStream(AVFormatContext *formatContext){
+	AVCodecContext *codecContext;
+	AVStream *st;
+	AVCodec *codec;
+
+	/* find the audio encoder */
+	codec = avcodec_find_encoder(AUDIO_CODEC_ID);
+	if (!codec) {
+		LOGE("add_audio_stream codec not found");
+	}
+	//LOGI("add_audio_stream found codec_id: %d",codec_id);
+	st = avformat_new_stream(formatContext, codec);
+	if (!st) {
+		LOGE("add_audio_stream could not alloc stream");
+	}
+
+	audioStreamIndex = st->index;
+
+	//st->id = 1;
+	codecContext = st->codec;
+	avcodec_get_context_defaults3(codecContext, codec);
+	codecContext->strict_std_compliance = FF_COMPLIANCE_UNOFFICIAL; // for native aac support
+	/* put sample parameters */
+	//codecContext->sample_fmt  = AV_SAMPLE_FMT_FLT;
+	codecContext->sample_fmt  = AUDIO_SAMPLE_FMT;
+	codecContext->time_base.den = 44100;
+	codecContext->time_base.num = 1;
+	//c->bit_rate    = bit_rate;
+	codecContext->sample_rate = AUDIO_SAMPLE_RATE;
+	codecContext->channels    = AUDIO_CHANNELS;
+	LOGI("addAudioStream sample_rate %d index %d", codecContext->sample_rate, st->index);
+	//LOGI("add_audio_stream parameters: sample_fmt: %d bit_rate: %d sample_rate: %d", codec_audio_sample_fmt, bit_rate, audio_sample_rate);
+	// some formats want stream headers to be separate
+	if (formatContext->oformat->flags & AVFMT_GLOBALHEADER)
+		codecContext->flags |= CODEC_FLAG_GLOBAL_HEADER;
 }
 
 void copyAVFormatContext(AVFormatContext **dest, AVFormatContext **source){
@@ -289,10 +396,17 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
     outputFormatContext = avFormatContextForOutputPath(outputPath, outputFormatName);
     LOGI("post avFormatContextForOutputPath");
 
+    //  For copying AVFormatContext from sample file:
+    /*
     inputFormatContext = avFormatContextForInputPath(sampleFilePath, outputFormatName);
     LOGI("post avFormatContextForInputPath");
     copyAVFormatContext(&outputFormatContext, &inputFormatContext);
     LOGI("post copyAVFormatContext");
+    */
+
+    // For manually crafting AVFormatContext
+    addVideoStream(outputFormatContext);
+    addAudioStream(outputFormatContext);
 
     int result = openFileForWriting(outputFormatContext, outputPath);
     if(result < 0){
@@ -330,15 +444,15 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
     	}else{
     		LOGI("video: %d data: %s size: %d", (int) jIsVideo, data, (int) jSize);
     	}
-    	return;
+    	//return;
     }
 
     av_init_packet(packet);
 
 	if( ((int) jIsVideo) == JNI_TRUE){
-		packet->stream_index = 0; // TODO do this right
+		packet->stream_index = videoStreamIndex;
 	}else{
-		packet->stream_index = 1; // TODO do this right
+		packet->stream_index = audioStreamIndex;
 	}
 
     packet->size = (int) jSize;
@@ -347,9 +461,13 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
 	packet->pts = av_rescale_q(packet->pts, *videoSourceTimeBase, (outputFormatContext->streams[packet->stream_index]->time_base));
 
+	if(videoFrameCount == 2){
+		LOGI("2frame");
+	}
+
     int writeFrameResult = av_interleaved_write_frame(outputFormatContext, packet);
     if(writeFrameResult < 0){
-        LOGE("av_interleaved_write_frame error: %s", stringForAVErrorNumber(writeFrameResult));
+        LOGE("av_interleaved_write_frame pkt: %d error: %s", videoFrameCount, stringForAVErrorNumber(writeFrameResult));
     }
     av_free_packet(packet);
 }

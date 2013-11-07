@@ -640,7 +640,7 @@ public class ChunkedHWRecorder {
                 	// AVCodecContext from Android's MediaFormat
                 	
                     if (VERBOSE) Log.d(TAG, "ignoring BUFFER_FLAG_CODEC_CONFIG");
-                    
+                    Log.i(TAG, String.format("Writing codec_config for %s", (encoder == mVideoEncoder) ? "video" : "audio"));
                     ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
                     bufferInfo.size = 0;	// prevent writing as normal packet
                 }
