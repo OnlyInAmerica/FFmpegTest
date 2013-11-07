@@ -27,7 +27,7 @@
 
 // Output
 const char *outputPath;
-const char *outputFormatName = "mpegts";
+const char *outputFormatName = "hls";
 int audioStreamIndex = -1;
 int videoStreamIndex = -1;
 
@@ -266,7 +266,7 @@ int openFileForWriting(AVFormatContext *avfc, const char *path){
         LOGI("Opening output file for writing at path %s", path);
         return avio_open(&avfc->pb, path, AVIO_FLAG_WRITE);
     }
-    return -42;
+    return 0;		// This format does not require a file
 }
 
 int writeFileHeader(AVFormatContext *avfc){
@@ -370,13 +370,8 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
 }
 
 /*
- * Prepares an AVFormatContext for output. For now,
- * accomplish this with avformat_open_input on a file
- * produced with Android's MediaMuxer that I've got on my device @ sampleFilePath
- * Sorry this isn't portable :/ Can I craft an AVFormatContext given only
- * the limited data Android's MediaFormat provides?
- * see:  http://developer.android.com/reference/android/media/MediaFormat.html
- * also: http://developer.android.com/reference/android/media/MediaCodec.html
+ * Prepares an AVFormatContext for output.
+ * Currently, the output format and codecs are hardcoded in this file.
  */
 void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *env, jobject obj, jstring jOutputPath){
     init();
@@ -407,6 +402,7 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
     // For manually crafting AVFormatContext
     addVideoStream(outputFormatContext);
     addAudioStream(outputFormatContext);
+    av_opt_set_int(outputFormatContext->priv_data, "hls_time", 10, 0);
 
     int result = openFileForWriting(outputFormatContext, outputPath);
     if(result < 0){
@@ -461,9 +457,11 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
 	packet->pts = av_rescale_q(packet->pts, *videoSourceTimeBase, (outputFormatContext->streams[packet->stream_index]->time_base));
 
+	/* Use this to break on specific frame
 	if(videoFrameCount == 2){
-		LOGI("2frame");
+		LOGI("break on frame");
 	}
+	*/
 
     int writeFrameResult = av_interleaved_write_frame(outputFormatContext, packet);
     if(writeFrameResult < 0){
@@ -472,9 +470,11 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
     av_free_packet(packet);
 }
 
+/*
+ * Finalize file. Basically a wrapper around av_write_trailer
+ */
 void Java_com_example_ffmpegtest_FFmpegWrapper_finalizeAVFormatContext(JNIEnv *env, jobject obj){
     LOGI("finalizeAVFormatContext");
-    // Write file trailer (av_write_trailer)
     int writeTrailerResult = writeFileTrailer(outputFormatContext);
     if(writeTrailerResult < 0){
         LOGE("av_write_trailer error: %d", writeTrailerResult);

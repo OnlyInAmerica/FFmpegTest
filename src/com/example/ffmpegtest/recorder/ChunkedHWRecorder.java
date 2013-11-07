@@ -87,7 +87,7 @@ public class ChunkedHWRecorder {
     private static final int VIDEO_WIDTH 		= 640;
     private static final int VIDEO_HEIGHT 		= 480;
     private static final int FRAME_RATE 		= 30;
-    private static final int IFRAME_INTERVAL 	= 5;           			// Seconds between I-frames
+    private static final int IFRAME_INTERVAL 	= 3;           			// Seconds between I-frames
     
     // Audio Encoder and Configuration
     private MediaCodec mAudioEncoder;
@@ -113,13 +113,7 @@ public class ChunkedHWRecorder {
     // Recording state
     private int leadingChunk = 1;
     long startWhen;
-    int videoFrameCount = 0;
-    int audioFrameCount = 0;
-    boolean eosSentToAudioEncoder = false;
-    boolean audioEosRequested = false;
-    boolean eosSentToVideoEncoder = false;
     boolean fullStopReceived = false;
-    boolean fullStopPerformed = false;
     boolean videoEncoderStopped = false;			// these variables keep track of global recording state. They are not toggled during chunking
     boolean audioEncoderStopped = false;
 
@@ -194,16 +188,14 @@ public class ChunkedHWRecorder {
             eosReceived = false;
 
             // The video encoding loop:
-            while (!(fullStopReceived && eosSentToVideoEncoder)) {
-                audioEosRequested = eosReceived;  //XXX Remove. Artifact from segmenting at this layer
+            while (!fullStopReceived) {
+                //audioEosRequested = eosReceived;  //XXX Remove. Artifact from segmenting at this layer
                 synchronized (sync){
                     if (TRACE) Trace.beginSection("drainVideo");
-                    drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, eosReceived || fullStopReceived);
+                    drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, false);
                     if (TRACE) Trace.endSection();
                 }
-                if (fullStopReceived){
-                    break;
-                }
+
                 //videoFrameCount++;
                 totalFrameCount++;
 
@@ -242,7 +234,10 @@ public class ChunkedHWRecorder {
                 if (TRACE) Trace.endSection();
                 */
             }
-            Log.i(TAG, "Exiting video encode loop");
+            Log.i(TAG, "Exited video encode loop. Draining video encoder");
+            synchronized(sync){
+            	drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, true);
+            }
 
         } catch (Exception e){
             Log.e(TAG, "Encoding loop exception!");
@@ -262,7 +257,6 @@ public class ChunkedHWRecorder {
      * Called internally to finalize HQ and last chunk
      */
     public void _stopRecording(){
-        fullStopPerformed = true;
         releaseCamera();
         releaseEncodersAndMuxer();
         releaseSurfaceTexture();
@@ -294,40 +288,30 @@ public class ChunkedHWRecorder {
                 @Override
                 public void run() {
                     audioRecord.startRecording();
-                    boolean audioEosRequestedCopy = false;
-                    while(true){
-
+                    while(!fullStopReceived){
                         if(!firstFrameReady)
                             continue;
-                        audioEosRequestedCopy = audioEosRequested; // make sure audioEosRequested doesn't change value mid loop
-                        if (audioEosRequestedCopy || fullStopReceived){ // TODO post eosReceived message with Handler?
-                            Log.i(TAG, "Audio loop caught audioEosRequested / fullStopReceived " + audioEosRequestedCopy + " " + fullStopReceived);
-                            if (TRACE) Trace.beginSection("sendAudio");
-                            sendAudioToEncoder(true);
-                            if (TRACE) Trace.endSection();
-                            audioFrameCount++;
-                        }
-                        if (fullStopReceived){
-                            Log.i(TAG, "Stopping AudioRecord");
-                            audioRecord.stop();
-                        }
 
                         synchronized (sync){
                             if (TRACE) Trace.beginSection("drainAudio");
-                            drainEncoder(mAudioEncoder, mAudioBufferInfo, mAudioTrackInfo, audioEosRequestedCopy || fullStopReceived);
+                            drainEncoder(mAudioEncoder, mAudioBufferInfo, mAudioTrackInfo, false);
                             if (TRACE) Trace.endSection();
                         }
 
-                        if (audioEosRequestedCopy) audioEosRequested = false;
+                        if (TRACE) Trace.beginSection("sendAudio");
+                        sendAudioToEncoder(false);
+                        if (TRACE) Trace.endSection();
 
-                        if (!fullStopReceived){
-                            if (TRACE) Trace.beginSection("sendAudio");
-                            sendAudioToEncoder(false);
-                            if (TRACE) Trace.endSection();
-                        }else{
-                            break;
-                        }
-                    } // end while
+                    }
+                    
+                    Log.i(TAG, "Exiting audio encode loop. Draining Audio Encoder");
+                    if (TRACE) Trace.beginSection("sendAudio");
+                    sendAudioToEncoder(true);
+                    if (TRACE) Trace.endSection();
+                    audioRecord.stop();
+                    synchronized(sync){
+                    	drainEncoder(mAudioEncoder, mAudioBufferInfo, mAudioTrackInfo, true);
+                    }
                 }
             }).start();
 
@@ -353,7 +337,6 @@ public class ChunkedHWRecorder {
                 if (endOfStream) {
                     Log.i(TAG, "EOS received in sendAudioToEncoder");
                     mAudioEncoder.queueInputBuffer(inputBufferIndex, 0, inputLength, presentationTimeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
-                    eosSentToAudioEncoder = true;
                 } else {
                     mAudioEncoder.queueInputBuffer(inputBufferIndex, 0, inputLength, presentationTimeUs, 0);
                 }
@@ -480,10 +463,6 @@ public class ChunkedHWRecorder {
      * mVideoEncoder, mMuxerWrapper, mInputSurface, mVideoBufferInfo, mVideoTrackInfo, and mMuxerStarted.
      */
     private void prepareEncoder(int width, int height, int bitRate) {
-    	videoFrameCount = 0;
-    	audioFrameCount = 0;
-        eosSentToAudioEncoder = false;
-        eosSentToVideoEncoder = false;
         fullStopReceived = false;
         mVideoBufferInfo = new MediaCodec.BufferInfo();
         mVideoTrackInfo = new TrackInfo();
@@ -536,7 +515,6 @@ public class ChunkedHWRecorder {
     }
 
     private void stopAndReleaseVideoEncoder(){
-        eosSentToVideoEncoder = false;
         videoEncoderStopped = true;
         //videoFrameCount = 0; // avoid setting this zero before all frames submitted to ffmpeg
         if (mVideoEncoder != null) {
@@ -549,7 +527,6 @@ public class ChunkedHWRecorder {
 
     private void stopAndReleaseAudioEncoder(){
         //audioFrameCount = 0;	// avoid setting this zero before all frames submitted to ffmpeg
-        eosSentToAudioEncoder = false;
         audioEncoderStopped = true;
         if (mAudioEncoder != null) {
             mAudioEncoder.stop();
@@ -587,7 +564,6 @@ public class ChunkedHWRecorder {
         if (endOfStream && encoder == mVideoEncoder) {
             if (VERBOSE) Log.d(TAG, "sending EOS to " + ((encoder == mVideoEncoder) ? "video" : "audio") + " encoder");
             encoder.signalEndOfInputStream();
-            eosSentToVideoEncoder = true;
         }
         ByteBuffer[] encoderOutputBuffers = encoder.getOutputBuffers();
 
@@ -682,7 +658,8 @@ public class ChunkedHWRecorder {
                     if (!endOfStream) {
                         Log.w(TAG, "reached end of stream unexpectedly");
                     } else {
-                        if (VERBOSE) Log.d(TAG, "end of " + ((encoder == mVideoEncoder) ? " video" : " audio") + " stream reached. ");
+                        if (VERBOSE) Log.d(TAG, "end of " + ((encoder == mVideoEncoder) ? "video" : "audio") + " stream reached. ");
+                        Log.d(TAG, "end of " + ((encoder == mVideoEncoder) ? "video" : "audio") + " stream reached. ");
                         if(encoder == mVideoEncoder){
                             stopAndReleaseVideoEncoder();
                         } else if(encoder == mAudioEncoder){
