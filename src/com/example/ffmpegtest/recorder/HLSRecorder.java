@@ -40,6 +40,7 @@
 
 package com.example.ffmpegtest.recorder;
 
+import android.content.Context;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
 import android.media.*;
@@ -49,14 +50,17 @@ import android.util.Log;
 import android.view.Surface;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.util.List;
+import java.util.UUID;
 
 import com.example.ffmpegtest.FFmpegWrapper;
+import com.example.ffmpegtest.FileUtils;
 
 /**
  * Records video in gapless chunks of fixed duration.
@@ -64,18 +68,19 @@ import com.example.ffmpegtest.FFmpegWrapper;
  * This was derived from Andrew McFadden's MediaCodec examples:
  * http://bigflake.com/mediacodec
  */
-public class ChunkedHWRecorder {
+public class HLSRecorder {
 	// Debugging
-    private static final String TAG = "ChunkedHWRecorder";
+    private static final String TAG = "HLSRecorder";
     private static final boolean VERBOSE = false;           			// Lots of logging
     private static final boolean TRACE = false; 						// Enable systrace markers
     int totalFrameCount = 0;											// Used to calculate realized FPS
     long startTime;
     
     // Output
-    private static String OUTPUT_DIR = "/sdcard/HWEncodingExperiments/";
+    private static String mRootStorageDirName = "HLSRecorder";				// The root storage directory
     private MediaFormat mVideoFormat;
-
+    private String mUUID;
+    private File mOutputDir;											// Folder containing recording files. /path/to/externalStorage/mOutputDir/<mUUID>/
     
     // Video Encoder
     private MediaCodec mVideoEncoder;
@@ -122,26 +127,53 @@ public class ChunkedHWRecorder {
 
     // FFmpegWrapper
     FFmpegWrapper ffmpeg = new FFmpegWrapper();		// Used to Mux encoded audio and video output from MediaCodec
+    
+    Context c;										// For accessing external storage
 
     // Manage Track meta data to pass to Muxer
     class TrackInfo {
         int index = 0;
     }
 
+    boolean firstFrameReady = false;
+    boolean eosReceived = false;
+    
+    public HLSRecorder(Context c){
+    	this.c = c;
+    }
+    
+    public String getUUID(){
+    	return mUUID;
+    }
+    
+    public String getOutputPath(){
+    	if(mOutputDir == null){
+    		Log.w(TAG, "getOutputPath called in invalid state");
+    		return "";
+    	}
+    	return mOutputDir.getAbsolutePath();
+    }
+    
     /* TODO: Display surface
     public void setDisplayEGLContext(EGLContext context){
         mInputSurface.mEGLDisplayContext = context;
     }
     */
 
-    boolean firstFrameReady = false;
-    boolean eosReceived = false;
-
+    /**
+     * Start recording within the given root directory
+     * The recording files will be placed in:
+     * outputDir/<UUID>/
+     * @param outputDir
+     */
     public void startRecording(final String outputDir){
         if(outputDir != null)
-            OUTPUT_DIR = outputDir;
-
-        ffmpeg.prepareAVFormatContext(OUTPUT_DIR + "ffmpeg_" + System.currentTimeMillis() + ".ts");
+            mRootStorageDirName = outputDir;
+        mUUID = UUID.randomUUID().toString();
+        mOutputDir = FileUtils.getStorageDirectory(FileUtils.getRootStorageDirectory(c, mRootStorageDirName), mUUID);
+        
+        // TODO: Create Base HWRecorder class and subclass to provide output format, codecs etc
+        ffmpeg.prepareAVFormatContext(mOutputDir.getAbsolutePath() + File.separator + "ffmpeg_" + System.currentTimeMillis() + ".m3u8");
         new Thread(new Runnable(){
 
             @Override
@@ -506,12 +538,6 @@ public class ChunkedHWRecorder {
         mAudioEncoder.configure(mAudioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
         mAudioEncoder.start();
         audioEncoderStopped = false;
-
-        // Output filename.  Ideally this would use Context.getFilesDir() rather than a
-        // hard-coded output directory.
-        String outputPath = OUTPUT_DIR + "chunktest." + width + "x" + height + String.valueOf(leadingChunk) + ".mp4";
-        Log.i(TAG, "Output file is " + outputPath);
-
     }
 
     private void stopAndReleaseVideoEncoder(){
@@ -616,7 +642,7 @@ public class ChunkedHWRecorder {
                 	// AVCodecContext from Android's MediaFormat
                 	
                     if (VERBOSE) Log.d(TAG, "ignoring BUFFER_FLAG_CODEC_CONFIG");
-                    Log.i(TAG, String.format("Writing codec_config for %s", (encoder == mVideoEncoder) ? "video" : "audio"));
+                    //Log.i(TAG, String.format("Writing codec_config for %s, pts %d", (encoder == mVideoEncoder) ? "video" : "audio", bufferInfo.presentationTimeUs));
                     ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
                     bufferInfo.size = 0;	// prevent writing as normal packet
                 }
@@ -624,18 +650,17 @@ public class ChunkedHWRecorder {
                 
 
                 if (bufferInfo.size != 0) {
+                	
                 	if(encoder == mAudioEncoder){
 	                	int outBitsSize = bufferInfo.size;
-	                	int outPacketSize = outBitsSize + ADTS_LENGTH;
-	                	
-	                	//byte[] data = new byte[outPacketSize];  //space for ADTS header included
+	                	int outPacketSize = outBitsSize + ADTS_LENGTH;	                	
 	                	addADTStoPacket(audioPacket, outPacketSize);
 	                    encodedData.get(audioPacket, ADTS_LENGTH, outBitsSize);
 	                    encodedData.position(bufferInfo.offset);
 	                    encodedData.put(audioPacket, 0, outPacketSize);
 	                    bufferInfo.size = outPacketSize;
-	                    
                 	}
+                	
                     // adjust the ByteBuffer values to match BufferInfo (not needed?)
                     encodedData.position(bufferInfo.offset);
                     encodedData.limit(bufferInfo.offset + bufferInfo.size);
@@ -647,7 +672,7 @@ public class ChunkedHWRecorder {
                     
                     // Previously, we'd write to Android's MediaMuxer here:
                     //muxerWrapper.writeSampleData(trackInfo.index, encodedData, bufferInfo);
-                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs);
+                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs); 
                     if (VERBOSE)
                         Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
                 }
@@ -866,7 +891,7 @@ public class ChunkedHWRecorder {
     private static class SurfaceTextureManager
             implements SurfaceTexture.OnFrameAvailableListener {
         private SurfaceTexture mSurfaceTexture;
-        private ChunkedHWRecorder.STextureRender mTextureRender;
+        private HLSRecorder.STextureRender mTextureRender;
         private Object mFrameSyncObject = new Object();     // guards mFrameAvailable
         private boolean mFrameAvailable;
 
@@ -874,7 +899,7 @@ public class ChunkedHWRecorder {
          * Creates instances of TextureRender and SurfaceTexture.
          */
         public SurfaceTextureManager() {
-            mTextureRender = new ChunkedHWRecorder.STextureRender();
+            mTextureRender = new HLSRecorder.STextureRender();
             mTextureRender.surfaceCreated();
 
             if (VERBOSE) Log.d(TAG, String.format("textureID=%d", mTextureRender.getTextureId()) );

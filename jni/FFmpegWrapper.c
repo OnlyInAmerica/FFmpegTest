@@ -457,11 +457,11 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
 	packet->pts = av_rescale_q(packet->pts, *videoSourceTimeBase, (outputFormatContext->streams[packet->stream_index]->time_base));
 
-	/* Use this to break on specific frame
+	/* Use this to break on specific frame */
 	if(videoFrameCount == 2){
 		LOGI("break on frame");
 	}
-	*/
+
 
     int writeFrameResult = av_interleaved_write_frame(outputFormatContext, packet);
     if(writeFrameResult < 0){

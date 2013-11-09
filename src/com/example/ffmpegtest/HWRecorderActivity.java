@@ -17,17 +17,28 @@
 
 package com.example.ffmpegtest;
 
-import com.example.ffmpegtest.recorder.ChunkedHWRecorder;
+import com.example.ffmpegtest.recorder.HLSRecorder;
+import com.example.ffmpegtest.recorder.LiveHLSRecorder;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Bundle;
+import android.support.v4.content.LocalBroadcastManager;
+import android.util.Log;
 import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 
 public class HWRecorderActivity extends Activity {
     private static final String TAG = "HWRecorderActivity";
     boolean recording = false;
-    ChunkedHWRecorder chunkedHWRecorder;
+    LiveHLSRecorder liveRecorder;
+    
+    TextView urlLabel;
+    String broadcastUrl;
 
     //GLSurfaceView glSurfaceView;
     //GlSurfaceViewRenderer glSurfaceViewRenderer = new GlSurfaceViewRenderer();
@@ -35,8 +46,12 @@ public class HWRecorderActivity extends Activity {
     protected void onCreate (Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_hwrecorder);
+        urlLabel = (TextView) findViewById(R.id.urlLabel);
         //glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
         //glSurfaceView.setRenderer(glSurfaceViewRenderer);
+        
+        LocalBroadcastManager.getInstance(this).registerReceiver(mMessageReceiver,
+        	      new IntentFilter(LiveHLSRecorder.INTENT_ACTION));
     }
 
     @Override
@@ -50,23 +65,57 @@ public class HWRecorderActivity extends Activity {
         super.onResume();
         //glSurfaceView.onResume();
     }
+    
+    @Override
+    protected void onDestroy() {
+      // Unregister since the activity is about to be closed.
+      LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiver);
+      super.onDestroy();
+    }
 
     public void onRecordButtonClicked(View v){
         if(!recording){
+        	broadcastUrl = null;
             try {
-                chunkedHWRecorder = new ChunkedHWRecorder();
-                chunkedHWRecorder.startRecording(null);
-                recording = true;
+                liveRecorder = new LiveHLSRecorder(getApplicationContext());
+                liveRecorder.startRecording(null);
                 ((Button) v).setText("Stop Recording");
             } catch (Throwable throwable) {
                 throwable.printStackTrace();
             }
         }else{
-            chunkedHWRecorder.stopRecording();
-            recording = false;
+            liveRecorder.stopRecording();
             ((Button) v).setText("Start Recording");
+            urlLabel.setVisibility(View.GONE);
+            urlLabel.setText("");
         }
+        recording = !recording;
     }
+    
+    private BroadcastReceiver mMessageReceiver = new BroadcastReceiver() {
+    	  @Override
+    	  public void onReceive(Context context, Intent intent) {
+    	    // Get extra data included in the Intent
+    		if (LiveHLSRecorder.HLS_STATUS.LIVE ==  (LiveHLSRecorder.HLS_STATUS) intent.getSerializableExtra("status")){
+    			broadcastUrl = intent.getStringExtra("url");
+        	    urlLabel.setText("Recording is Live! " + broadcastUrl);
+        	    urlLabel.setVisibility(View.VISIBLE);
+    		}  
+    	  }
+    };
+    
+    public void onUrlLabelClick(View v){
+    	if(broadcastUrl != null){
+    		shareUrl(broadcastUrl);
+    	}
+    }
+    
+    private void shareUrl(String url) {
+        Intent shareIntent = new Intent(Intent.ACTION_SEND);
+        shareIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET);
+        shareIntent.setType("text/plain");
+        startActivity(Intent.createChooser(shareIntent, "Share Broadcast!"));
+    }  
 
     /*
     static EGLContext context;
