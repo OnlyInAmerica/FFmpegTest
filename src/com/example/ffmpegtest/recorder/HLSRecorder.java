@@ -77,18 +77,20 @@ public class HLSRecorder {
     long startTime;
     
     // Output
-    private static String mRootStorageDirName = "HLSRecorder";				// The root storage directory
-    private MediaFormat mVideoFormat;
+    private static String mRootStorageDirName = "HLSRecorder";			// Root storage directory
     private String mUUID;
     private File mOutputDir;											// Folder containing recording files. /path/to/externalStorage/mOutputDir/<mUUID>/
+    private File mM3U8;													// .m3u8 playlist file
     
     // Video Encoder
     private MediaCodec mVideoEncoder;
     private MediaCodec.BufferInfo mVideoBufferInfo;
     private CodecInputSurface mInputSurface;							// Encoder input Surface
     private TrackInfo mVideoTrackInfo;									// Track meta data for Muxer
+    private MediaFormat mVideoFormat;
     private static final String VIDEO_MIME_TYPE = "video/avc";    		// H.264 Advanced Video Coding
     private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";    // AAC Low Overhead Audio Transport Multiplex
+    private static final int VIDEO_BIT_RATE		= 450000;
     private static final int VIDEO_WIDTH 		= 640;
     private static final int VIDEO_HEIGHT 		= 480;
     private static final int FRAME_RATE 		= 30;
@@ -99,10 +101,11 @@ public class HLSRecorder {
     private MediaCodec.BufferInfo mAudioBufferInfo;
     private TrackInfo mAudioTrackInfo;
     private MediaFormat mAudioFormat;									// Configured with the options below
-    public static final int SAMPLE_RATE 		= 44100;
-    public static final int SAMPLES_PER_FRAME 	= 1024; 				// AAC frame size. Audio encoder input size is a multiple of this
-    public static final int CHANNEL_CONFIG 		= AudioFormat.CHANNEL_IN_MONO;
-    public static final int AUDIO_FORMAT 		= AudioFormat.ENCODING_PCM_16BIT;
+    private static final int AUDIO_BIT_RATE		= 96000;
+    private static final int SAMPLE_RATE 		= 44100;
+    private static final int SAMPLES_PER_FRAME 	= 1024; 				// AAC frame size. Audio encoder input size is a multiple of this
+    private static final int CHANNEL_CONFIG 	= AudioFormat.CHANNEL_IN_MONO;
+    private static final int AUDIO_FORMAT 		= AudioFormat.ENCODING_PCM_16BIT;
     
     // Audio sampling interface
     private AudioRecord audioRecord;
@@ -146,14 +149,22 @@ public class HLSRecorder {
     	return mUUID;
     }
     
-    public String getOutputPath(){
+    public File getOutputDirectory(){
     	if(mOutputDir == null){
-    		Log.w(TAG, "getOutputPath called in invalid state");
-    		return "";
+    		Log.w(TAG, "getOutputDirectory called in invalid state");
+    		return null;
     	}
-    	return mOutputDir.getAbsolutePath();
+    	return mOutputDir;
     }
     
+    public File getManifest(){
+    	if(mM3U8 == null){
+    		Log.w(TAG, "getManifestPath called in invalid state");
+    		return null;
+    	}
+    	return mM3U8;
+    }
+        
     /* TODO: Display surface
     public void setDisplayEGLContext(EGLContext context){
         mInputSurface.mEGLDisplayContext = context;
@@ -173,7 +184,8 @@ public class HLSRecorder {
         mOutputDir = FileUtils.getStorageDirectory(FileUtils.getRootStorageDirectory(c, mRootStorageDirName), mUUID);
         
         // TODO: Create Base HWRecorder class and subclass to provide output format, codecs etc
-        ffmpeg.prepareAVFormatContext(mOutputDir.getAbsolutePath() + File.separator + "ffmpeg_" + System.currentTimeMillis() + ".m3u8");
+        mM3U8 = new File(mOutputDir, System.currentTimeMillis() + ".m3u8");
+        ffmpeg.prepareAVFormatContext(mM3U8.getAbsolutePath());
         new Thread(new Runnable(){
 
             @Override
@@ -189,14 +201,13 @@ public class HLSRecorder {
      * @param outputDir
      */
     private void _startRecording(String outputDir){
-        int encBitRate = 1000000;      // bps
         //int framesPerChunk = (int) CHUNK_DURATION_SEC * FRAME_RATE;
-        Log.d(TAG, VIDEO_MIME_TYPE + " output " + VIDEO_WIDTH + "x" + VIDEO_HEIGHT + " @" + encBitRate);
+        Log.d(TAG, VIDEO_MIME_TYPE + " output " + VIDEO_WIDTH + "x" + VIDEO_HEIGHT + " @" + VIDEO_BIT_RATE);
 
         try {
             if (TRACE) Trace.beginSection("prepare");
             prepareCamera(VIDEO_WIDTH, VIDEO_HEIGHT, Camera.CameraInfo.CAMERA_FACING_BACK);
-            prepareEncoder(VIDEO_WIDTH, VIDEO_HEIGHT, encBitRate);
+            prepareEncoder();
             mInputSurface.makeEncodeContextCurrent();
             prepareSurfaceTexture();
             setupAudioRecord();
@@ -494,18 +505,18 @@ public class HLSRecorder {
      * Configures encoder and muxer state, and prepares the input Surface.  Initializes
      * mVideoEncoder, mMuxerWrapper, mInputSurface, mVideoBufferInfo, mVideoTrackInfo, and mMuxerStarted.
      */
-    private void prepareEncoder(int width, int height, int bitRate) {
+    private void prepareEncoder() {
         fullStopReceived = false;
         mVideoBufferInfo = new MediaCodec.BufferInfo();
         mVideoTrackInfo = new TrackInfo();
 
-        mVideoFormat = MediaFormat.createVideoFormat(VIDEO_MIME_TYPE, width, height);
+        mVideoFormat = MediaFormat.createVideoFormat(VIDEO_MIME_TYPE, VIDEO_WIDTH, VIDEO_HEIGHT);
 
         // Set some properties.  Failing to specify some of these can cause the MediaCodec
         // configure() call to throw an unhelpful exception.
         mVideoFormat.setInteger(MediaFormat.KEY_COLOR_FORMAT,
                 MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface);
-        mVideoFormat.setInteger(MediaFormat.KEY_BIT_RATE, bitRate);
+        mVideoFormat.setInteger(MediaFormat.KEY_BIT_RATE, VIDEO_BIT_RATE);
         mVideoFormat.setInteger(MediaFormat.KEY_FRAME_RATE, FRAME_RATE);
         mVideoFormat.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, IFRAME_INTERVAL);
         if (VERBOSE) Log.d(TAG, "format: " + mVideoFormat);
@@ -531,7 +542,7 @@ public class HLSRecorder {
         mAudioFormat.setInteger(MediaFormat.KEY_AAC_PROFILE, MediaCodecInfo.CodecProfileLevel.AACObjectLC);
         mAudioFormat.setInteger(MediaFormat.KEY_SAMPLE_RATE, SAMPLE_RATE);
         mAudioFormat.setInteger(MediaFormat.KEY_CHANNEL_COUNT, 1);
-        mAudioFormat.setInteger(MediaFormat.KEY_BIT_RATE, 128000);
+        mAudioFormat.setInteger(MediaFormat.KEY_BIT_RATE, AUDIO_BIT_RATE);
         mAudioFormat.setInteger(MediaFormat.KEY_MAX_INPUT_SIZE, 16384);
 
         mAudioEncoder = MediaCodec.createEncoderByType(AUDIO_MIME_TYPE);

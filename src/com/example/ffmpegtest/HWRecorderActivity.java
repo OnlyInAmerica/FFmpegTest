@@ -98,7 +98,7 @@ public class HWRecorderActivity extends Activity {
     	    // Get extra data included in the Intent
     		if (LiveHLSRecorder.HLS_STATUS.LIVE ==  (LiveHLSRecorder.HLS_STATUS) intent.getSerializableExtra("status")){
     			broadcastUrl = intent.getStringExtra("url");
-        	    urlLabel.setText("Recording is Live! " + broadcastUrl);
+        	    urlLabel.setText("Recording is Live!");
         	    urlLabel.setVisibility(View.VISIBLE);
     		}  
     	  }
