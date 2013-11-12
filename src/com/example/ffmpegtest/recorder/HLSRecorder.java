@@ -90,7 +90,7 @@ public class HLSRecorder {
     private MediaFormat mVideoFormat;
     private static final String VIDEO_MIME_TYPE = "video/avc";    		// H.264 Advanced Video Coding
     private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";    // AAC Low Overhead Audio Transport Multiplex
-    private static final int VIDEO_BIT_RATE		= 450000;
+    private static final int VIDEO_BIT_RATE		= 250000;
     private static final int VIDEO_WIDTH 		= 640;
     private static final int VIDEO_HEIGHT 		= 480;
     private static final int FRAME_RATE 		= 30;
@@ -119,7 +119,6 @@ public class HLSRecorder {
     private SurfaceTextureManager mStManager;
 
     // Recording state
-    private int leadingChunk = 1;
     long startWhen;
     boolean fullStopReceived = false;
     boolean videoEncoderStopped = false;			// these variables keep track of global recording state. They are not toggled during chunking
@@ -652,9 +651,21 @@ public class HLSRecorder {
                 	// Perhaps we should concentrate on setting FFmpeg's
                 	// AVCodecContext from Android's MediaFormat
                 	
+                	if(encoder == mAudioEncoder){
+	                	int outBitsSize = bufferInfo.size;
+	                	int outPacketSize = outBitsSize + ADTS_LENGTH;	                	
+	                	addADTStoPacket(audioPacket, outPacketSize);
+	                    encodedData.get(audioPacket, ADTS_LENGTH, outBitsSize);
+	                    encodedData.position(bufferInfo.offset);
+	                    encodedData.put(audioPacket, 0, outPacketSize);
+	                    bufferInfo.size = outPacketSize;
+                	}
+                	
+                	
                     if (VERBOSE) Log.d(TAG, "ignoring BUFFER_FLAG_CODEC_CONFIG");
-                    //Log.i(TAG, String.format("Writing codec_config for %s, pts %d", (encoder == mVideoEncoder) ? "video" : "audio", bufferInfo.presentationTimeUs));
+                    Log.i(TAG, String.format("Writing codec_config for %s, pts %d size: %d", (encoder == mVideoEncoder) ? "video" : "audio", bufferInfo.presentationTimeUs,  bufferInfo.size));
                     ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
+                    
                     bufferInfo.size = 0;	// prevent writing as normal packet
                 }
                 	
@@ -968,7 +979,8 @@ public class HLSRecorder {
                         mFrameSyncObject.wait(TIMEOUT_MS);
                         if (!mFrameAvailable) {
                             // TODO: if "spurious wakeup", continue while loop
-                            throw new RuntimeException("Camera frame wait timed out");
+                            Log.e(TAG, "Camera frame wait timed out.");
+                        	//throw new RuntimeException("Camera frame wait timed out");
                         }
                     } catch (InterruptedException ie) {
                         // shouldn't happen

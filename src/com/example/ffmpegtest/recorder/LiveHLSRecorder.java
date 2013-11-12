@@ -25,7 +25,7 @@ import com.readystatesoftware.simpl3r.Uploader.UploadProgressListener;
 
 public class LiveHLSRecorder extends HLSRecorder{
 	private final String TAG = "LiveHLSRecorder";
-	private final boolean VERBOSE = true; 						// lots of logging
+	private final boolean VERBOSE = false; 						// lots of logging
 	
 	private Context c;
 	private String uuid;										// Recording UUID
@@ -152,7 +152,7 @@ public class LiveHLSRecorder extends HLSRecorder{
 	 * @param url address of the HLS stream
 	 */
 	private void broadcastRecordingIsLive(String url) {
-		  Log.d(TAG, "Broadcasting Live HLS link");
+		  Log.d(TAG, String.format("Broadcasting Live HLS link: %s", url));
 		  Intent intent = new Intent(INTENT_ACTION);
 		  intent.putExtra("url", url);
 		  intent.putExtra("status", HLS_STATUS.LIVE);
