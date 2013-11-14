@@ -26,6 +26,7 @@ import com.readystatesoftware.simpl3r.Uploader.UploadProgressListener;
 public class LiveHLSRecorder extends HLSRecorder{
 	private final String TAG = "LiveHLSRecorder";
 	private final boolean VERBOSE = false; 						// lots of logging
+	private final boolean UPLOAD_TO_S3 = false;					// live uploading
 	
 	private Context c;
 	private String uuid;										// Recording UUID
@@ -65,6 +66,7 @@ public class LiveHLSRecorder extends HLSRecorder{
 		temp = new File(getOutputDirectory(), "temp");	// make temp directory for .m3u8s for each upload state
 		temp.mkdirs();
 		sentIsLiveBroadcast = false;
+		if (!UPLOAD_TO_S3) return;
         observer = new HLSFileObserver(getOutputDirectory().getAbsolutePath(), new HLSCallback(){
 
 			@Override

@@ -28,6 +28,7 @@
 // Output
 const char *outputPath;
 const char *outputFormatName = "hls";
+int hlsSegmentDurationSec = 10;
 int audioStreamIndex = -1;
 int videoStreamIndex = -1;
 
@@ -58,7 +59,7 @@ const char *sampleFilePath = "/sdcard/sample.ts";
 
 // Debugging
 int videoFrameCount = 0;
-int WRITE_RAW_FILE = 0;		// Write raw packets to file
+int WRITE_RAW_FILE = 0;		// Write raw video packets to file
 
 FILE *raw_video;
 
@@ -402,7 +403,7 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
     // For manually crafting AVFormatContext
     addVideoStream(outputFormatContext);
     addAudioStream(outputFormatContext);
-    av_opt_set_int(outputFormatContext->priv_data, "hls_time", 10, 0);
+    av_opt_set_int(outputFormatContext->priv_data, "hls_time", hlsSegmentDurationSec, 0);
 
     int result = openFileForWriting(outputFormatContext, outputPath);
     if(result < 0){
@@ -436,7 +437,7 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
     if(((int) jSize ) < 15){
     	if( ((int) jIsVideo) == JNI_TRUE ){
-    		LOGI("video: %d data: %s size: %d packet: %d", (int) jIsVideo, (char*)data, (int) jSize, videoFrameCount);
+    		LOGI("video: %d data: %s size: %d videoPacket#: %d", (int) jIsVideo, (char*)data, (int) jSize, videoFrameCount);
     	}else{
     		LOGI("video: %d data: %s size: %d", (int) jIsVideo, data, (int) jSize);
     	}
@@ -458,8 +459,9 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 	packet->pts = av_rescale_q(packet->pts, *videoSourceTimeBase, (outputFormatContext->streams[packet->stream_index]->time_base));
 
 	/* Use this to break on specific frame */
-	if(videoFrameCount == 1){
+	if(videoFrameCount == 3){
 		LOGI("break on frame");
+		LOGI("Payload size: %d", (int) jSize);
 	}
 
 
