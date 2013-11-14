@@ -51,6 +51,7 @@ import android.view.Surface;
 
 import java.io.BufferedWriter;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -173,6 +174,11 @@ public class HLSRecorder {
         mInputSurface.mEGLDisplayContext = context;
     }
     */
+    
+    // DEBUGGING
+	File videoHeader;
+	FileOutputStream outputStream;
+	byte[] delimiter = new byte[]{1,2,3,4,5,5,4,3,2,1};
 
     /**
      * Start recording within the given root directory
@@ -189,13 +195,25 @@ public class HLSRecorder {
         // TODO: Create Base HWRecorder class and subclass to provide output format, codecs etc
         mM3U8 = new File(mOutputDir, System.currentTimeMillis() + ".m3u8");
         ffmpeg.prepareAVFormatContext(mM3U8.getAbsolutePath());
-        new Thread(new Runnable(){
+        
+        // DEBUGGING
+        videoHeader = new File(FileUtils.getRootStorageDirectory(c, mRootStorageDirName), "videoHeader_" + mUUID);
+        try {
+			outputStream = new FileOutputStream(videoHeader);
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+        // END DEBUGGING
+        Thread encodingThread = new Thread(new Runnable(){
 
             @Override
             public void run() {
                 _startRecording(outputDir);
             }
-        }, TAG).start();
+        }, TAG);
+        encodingThread.setPriority(Thread.MAX_PRIORITY);
+        encodingThread.start();
     }
 
     /**
@@ -297,6 +315,13 @@ public class HLSRecorder {
         fullStopReceived = true;
         double recordingDurationSec = (System.nanoTime() - startTime) / 1000000000.0;
         Log.i(TAG, "Recorded " + recordingDurationSec + " s. Expected " + (FRAME_RATE * recordingDurationSec) + " frames. Got " + totalFrameCount + " for " + (totalFrameCount / recordingDurationSec) + " fps");
+        // DEBUGGING
+        try {
+			outputStream.close();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
     }
 
     /**
@@ -329,7 +354,7 @@ public class HLSRecorder {
     private void startAudioRecord(){
         if(audioRecord != null){
 
-            new Thread(new Runnable(){
+            Thread audioEncodingThread = new Thread(new Runnable(){
 
                 @Override
                 public void run() {
@@ -359,7 +384,9 @@ public class HLSRecorder {
                     	drainEncoder(mAudioEncoder, mAudioBufferInfo, mAudioTrackInfo, true);
                     }
                 }
-            }).start();
+            });
+            audioEncodingThread.setPriority(Thread.MAX_PRIORITY);
+            audioEncodingThread.start();
 
         }
 
@@ -589,6 +616,9 @@ public class HLSRecorder {
         stopAndReleaseEncoders();
         // TODO: Finalize ffmpeg
     }
+    
+    // DEBUGGING
+    boolean sawFirstVideoKeyFrame = false;
    
 
     /**
@@ -674,6 +704,16 @@ public class HLSRecorder {
                 		encodedData.position(bufferInfo.offset);
                 		encodedData.put(videoConfig, 0, bufferInfo.size);
                 		videoSPSandPPS.put(videoConfig, 0, bufferInfo.size);
+                		/*
+                		try {
+                			outputStream.write(videoConfig);
+                			outputStream.write(delimiter);
+                			Log.i(TAG, "Wrote small video data to " + videoHeader.getAbsolutePath());
+                		} catch (Exception e) {
+                			Log.i(TAG, "Error writing small video data to " + videoHeader.getAbsolutePath());
+                			e.printStackTrace();
+                		}
+                		*/
                 	}
                 	
                     if (VERBOSE) Log.i(TAG, String.format("Writing codec_config for %s, pts %d size: %d", (encoder == mVideoEncoder) ? "video" : "audio", bufferInfo.presentationTimeUs,  bufferInfo.size));
@@ -698,16 +738,40 @@ public class HLSRecorder {
                     encodedData.position(bufferInfo.offset);
                     encodedData.limit(bufferInfo.offset + bufferInfo.size);
 
-
                     if(encoder == mVideoEncoder && (bufferInfo.flags & MediaCodec.BUFFER_FLAG_SYNC_FRAME) != 0){
                     	// A hack! Preceed every keyframe with the Sequence Parameter Set and Picture Parameter Set generated
                     	// by MediaCodec in the CODEC_CONFIG buffer.
-                    	ffmpeg.writeAVPacketFromEncodedData(videoSPSandPPS, (encoder == mVideoEncoder) ? 1 : 0, 0, videoSPSandPPS.capacity(), bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ (bufferInfo.presentationTimeUs-1159));
-
+                    	
+                    	if(sawFirstVideoKeyFrame){
+                    		// Write SPS + PPS
+                    		ffmpeg.writeAVPacketFromEncodedData(videoSPSandPPS, (encoder == mVideoEncoder) ? 1 : 0, 0, videoSPSandPPS.capacity(), bufferInfo.flags, (bufferInfo.presentationTimeUs-1159));
+                    	}else
+                    		sawFirstVideoKeyFrame = true;
+                    	// Write Keyframe
+                    	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs); 
+                    }else{
+                    	// Write Audio Frame or Non Key Video Frame
+                    	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs); 
                     }
-                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs); 
                     if (VERBOSE)
                         Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
+                
+                    /*
+                    if(encoder == mVideoEncoder && bufferInfo.size < 20){
+                		// Write bits to disk for inspection                		
+                		try {
+                			byte[] data = new byte[bufferInfo.size];
+                			encodedData.get(data, 0, bufferInfo.size);
+                			outputStream.write(data);
+                			outputStream.write(delimiter);
+                			
+                			Log.i(TAG, "Wrote small video data to " + videoHeader.getAbsolutePath());
+                		} catch (Exception e) {
+                			Log.i(TAG, "Error writing small video data to " + videoHeader.getAbsolutePath());
+                			e.printStackTrace();
+                		}
+                    }
+                    */
                 }
 
                 encoder.releaseOutputBuffer(encoderStatus, false);
