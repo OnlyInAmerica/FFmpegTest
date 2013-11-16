@@ -35,8 +35,8 @@ int videoStreamIndex = -1;
 // Video
 int VIDEO_PIX_FMT = PIX_FMT_YUV420P;
 int VIDEO_CODEC_ID = CODEC_ID_H264;
-int VIDEO_WIDTH = 640;
-int VIDEO_HEIGHT = 480;
+int VIDEO_WIDTH = 1280;
+int VIDEO_HEIGHT = 720;
 
 // Audio
 int AUDIO_CODEC_ID = CODEC_ID_AAC;
@@ -94,7 +94,7 @@ void addVideoStream(AVFormatContext *dest){
 	/* find the video encoder */
 	codec = avcodec_find_encoder(VIDEO_CODEC_ID);
 	if (!codec) {
-		LOGE("add_video_stream codec not found");
+		LOGI("add_video_stream codec not found, as expected. No encoding necessary");
 	}
 
 	st = avformat_new_stream(dest, codec);
@@ -437,9 +437,9 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
     if(((int) jSize ) < 15){
     	if( ((int) jIsVideo) == JNI_TRUE ){
-    		LOGI("video: %d data: %s size: %d videoPacket#: %d", (int) jIsVideo, (char*)data, (int) jSize, videoFrameCount);
+    		//LOGI("video: %d data: %s size: %d videoPacket#: %d", (int) jIsVideo, (char*)data, (int) jSize, videoFrameCount);
     	}else{
-    		LOGI("video: %d data: %s size: %d", (int) jIsVideo, data, (int) jSize);
+    		//LOGI("video: %d data: %s size: %d", (int) jIsVideo, data, (int) jSize);
     	}
     	//return;
     }
@@ -460,8 +460,8 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 
 	/* Use this to break on specific frame */
 	if(videoFrameCount == 3){
-		LOGI("break on frame");
-		LOGI("Payload size: %d", (int) jSize);
+		//LOGI("break on frame");
+		//LOGI("Payload size: %d", (int) jSize);
 	}
 
 

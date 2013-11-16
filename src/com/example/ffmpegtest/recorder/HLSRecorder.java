@@ -74,7 +74,7 @@ public class HLSRecorder {
 	// Debugging
     private static final String TAG = "HLSRecorder";
     private static final boolean VERBOSE = false;           			// Lots of logging
-    private static final boolean TRACE = false; 						// Enable systrace markers
+    private static final boolean TRACE = true; 							// Enable systrace markers
     int totalFrameCount = 0;											// Used to calculate realized FPS
     long startTime;
     
@@ -92,11 +92,11 @@ public class HLSRecorder {
     private MediaFormat mVideoFormat;
     private static final String VIDEO_MIME_TYPE = "video/avc";    		// H.264 Advanced Video Coding
     private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";    // AAC Low Overhead Audio Transport Multiplex
-    private static final int VIDEO_BIT_RATE		= 250000;				// Bits per second
-    private static final int VIDEO_WIDTH 		= 640;
-    private static final int VIDEO_HEIGHT 		= 480;
+    private static final int VIDEO_BIT_RATE		= 450000;				// Bits per second
+    private static final int VIDEO_WIDTH 		= 1280;
+    private static final int VIDEO_HEIGHT 		= 720;
     private static final int FRAME_RATE 		= 30;					// Frames per second.
-    private static final int IFRAME_INTERVAL 	= 5;           			// Seconds between I-frames
+    private static final int IFRAME_INTERVAL 	= 3;           			// Seconds between I-frames
     
     // Audio Encoder and Configuration
     private MediaCodec mAudioEncoder;
@@ -400,7 +400,7 @@ public class HLSRecorder {
             if (inputBufferIndex >= 0) {
                 ByteBuffer inputBuffer = inputBuffers[inputBufferIndex];
                 inputBuffer.clear();
-                int inputLength =  audioRecord.read(inputBuffer, SAMPLES_PER_FRAME );
+                int inputLength =  audioRecord.read(inputBuffer, SAMPLES_PER_FRAME * 2);
                 long presentationTimeNs = System.nanoTime();
                 presentationTimeNs -= (inputLength / SAMPLE_RATE ) / 1000000000;
                 if(inputLength == AudioRecord.ERROR_INVALID_OPERATION)
@@ -457,25 +457,30 @@ public class HLSRecorder {
      */
     private void prepareCamera(int encWidth, int encHeight, int cameraType) {
         if (cameraType != Camera.CameraInfo.CAMERA_FACING_FRONT && cameraType != Camera.CameraInfo.CAMERA_FACING_BACK) {
-            Log.w(TAG, "waiting for camera frame");
-        	//throw new RuntimeException("Invalid cameraType"); // TODO
+        	throw new RuntimeException("Invalid cameraType"); // TODO
         }
 
         Camera.CameraInfo info = new Camera.CameraInfo();
 
         // Try to find a front-facing camera (e.g. for videoconferencing).
         int numCameras = Camera.getNumberOfCameras();
-        for (int i = 0; i < numCameras; i++) {
-            Camera.getCameraInfo(i, info);
-            if (info.facing == cameraType) {
-                mCamera = Camera.open(i);
-                break;
-            }
+        boolean triedBothCameraTypes = false;
+        while(mCamera == null){
+	        for (int i = 0; i < numCameras; i++) {
+	            Camera.getCameraInfo(i, info);
+	            if (info.facing == cameraType) {
+	                mCamera = Camera.open(i);
+	                break;
+	            }
+	        }
+	        if(mCamera == null){
+	        	if(triedBothCameraTypes) break;
+	        	Log.e(TAG, "Could not find desired camera type. Trying another");
+	        	cameraType = (cameraType == Camera.CameraInfo.CAMERA_FACING_FRONT) ?  Camera.CameraInfo.CAMERA_FACING_BACK : Camera.CameraInfo.CAMERA_FACING_FRONT;
+	        	triedBothCameraTypes = true;
+	        }
         }
-        if (mCamera == null && cameraType == Camera.CameraInfo.CAMERA_FACING_FRONT) {
-            Log.d(TAG, "No front-facing camera found; opening default");
-            mCamera = Camera.open();    // opens first back-facing camera
-        }
+       
         if (mCamera == null) {
             throw new RuntimeException("Unable to open camera");
         }
@@ -737,7 +742,7 @@ public class HLSRecorder {
                     // adjust the ByteBuffer values to match BufferInfo (not needed?)
                     encodedData.position(bufferInfo.offset);
                     encodedData.limit(bufferInfo.offset + bufferInfo.size);
-
+                    
                     if(encoder == mVideoEncoder && (bufferInfo.flags & MediaCodec.BUFFER_FLAG_SYNC_FRAME) != 0){
                     	// A hack! Preceed every keyframe with the Sequence Parameter Set and Picture Parameter Set generated
                     	// by MediaCodec in the CODEC_CONFIG buffer.
@@ -748,7 +753,7 @@ public class HLSRecorder {
                     	}else
                     		sawFirstVideoKeyFrame = true;
                     	// Write Keyframe
-                    	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs); 
+                    	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs); 
                     }else{
                     	// Write Audio Frame or Non Key Video Frame
                     	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs); 
