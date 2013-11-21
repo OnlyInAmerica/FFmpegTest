@@ -92,7 +92,7 @@ public class HLSRecorder {
     private MediaFormat mVideoFormat;
     private static final String VIDEO_MIME_TYPE = "video/avc";    		// H.264 Advanced Video Coding
     private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";    // AAC Low Overhead Audio Transport Multiplex
-    private static final int VIDEO_BIT_RATE		= 450000;				// Bits per second
+    private static final int VIDEO_BIT_RATE		= 550000;				// Bits per second
     private static final int VIDEO_WIDTH 		= 1280;
     private static final int VIDEO_HEIGHT 		= 720;
     private static final int FRAME_RATE 		= 30;					// Frames per second.
@@ -292,11 +292,6 @@ public class HLSRecorder {
                 if (!firstFrameReady) startTime = System.nanoTime();
                 firstFrameReady = true;
 
-                /*
-                if (TRACE) Trace.beginSection("sendAudio");
-                sendAudioToEncoder(false);
-                if (TRACE) Trace.endSection();
-                */
             }
             Log.i(TAG, "Exited video encode loop. Draining video encoder");
             synchronized(sync){
@@ -322,19 +317,6 @@ public class HLSRecorder {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-    }
-
-    /**
-     * Called internally to finalize HQ and last chunk
-     */
-    public void _stopRecording(){
-        releaseCamera();
-        releaseEncodersAndMuxer();
-        releaseSurfaceTexture();
-        if (mInputSurface != null) {
-            mInputSurface.release();
-            mInputSurface = null;
-        }
     }
 
     private void setupAudioRecord(){
@@ -391,27 +373,33 @@ public class HLSRecorder {
         }
 
     }
-
+    
+    // Variables recycled between calls to sendAudioToEncoder
+    int audioInputBufferIndex;
+    int audioInputLength;
+    long audioAbsolutePresentationTimeNs;
+    long audioRelativePresentationTimeUs;
+    
     public void sendAudioToEncoder(boolean endOfStream) {
         // send current frame data to encoder
         try {
             ByteBuffer[] inputBuffers = mAudioEncoder.getInputBuffers();
-            int inputBufferIndex = mAudioEncoder.dequeueInputBuffer(-1);
-            if (inputBufferIndex >= 0) {
-                ByteBuffer inputBuffer = inputBuffers[inputBufferIndex];
+            audioInputBufferIndex = mAudioEncoder.dequeueInputBuffer(-1);
+            if (audioInputBufferIndex >= 0) {
+                ByteBuffer inputBuffer = inputBuffers[audioInputBufferIndex];
                 inputBuffer.clear();
-                int inputLength =  audioRecord.read(inputBuffer, SAMPLES_PER_FRAME * 2);
-                long presentationTimeNs = System.nanoTime();
-                presentationTimeNs -= (inputLength / SAMPLE_RATE ) / 1000000000;
-                if(inputLength == AudioRecord.ERROR_INVALID_OPERATION)
+                audioInputLength =  audioRecord.read(inputBuffer, SAMPLES_PER_FRAME * 2);
+                audioAbsolutePresentationTimeNs = System.nanoTime();
+                audioAbsolutePresentationTimeNs -= (audioInputLength / SAMPLE_RATE ) / 1000000000;
+                if(audioInputLength == AudioRecord.ERROR_INVALID_OPERATION)
                     Log.e(TAG, "Audio read error");
-                long presentationTimeUs = (presentationTimeNs - startWhen) / 1000;
-                if (VERBOSE) Log.i(TAG, "queueing " + inputLength + " audio bytes with pts " + presentationTimeUs);
+                audioRelativePresentationTimeUs = (audioAbsolutePresentationTimeNs - startWhen) / 1000;
+                if (VERBOSE) Log.i(TAG, "queueing " + audioInputLength + " audio bytes with pts " + audioRelativePresentationTimeUs);
                 if (endOfStream) {
                     Log.i(TAG, "EOS received in sendAudioToEncoder");
-                    mAudioEncoder.queueInputBuffer(inputBufferIndex, 0, inputLength, presentationTimeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
+                    mAudioEncoder.queueInputBuffer(audioInputBufferIndex, 0, audioInputLength, audioRelativePresentationTimeUs, MediaCodec.BUFFER_FLAG_END_OF_STREAM);
                 } else {
-                    mAudioEncoder.queueInputBuffer(inputBufferIndex, 0, inputLength, presentationTimeUs, 0);
+                    mAudioEncoder.queueInputBuffer(audioInputBufferIndex, 0, audioInputLength, audioRelativePresentationTimeUs, 0);
                 }
             }
         } catch (Throwable t) {
@@ -502,8 +490,8 @@ public class HLSRecorder {
      * Stops camera preview, and releases the camera to the system.
      */
     private void releaseCamera() {
-        if (VERBOSE) Log.d(TAG, "releasing camera");
         if (mCamera != null) {
+            if (VERBOSE) Log.d(TAG, "releasing camera");
             mCamera.stopPreview();
             mCamera.release();
             mCamera = null;
@@ -533,6 +521,13 @@ public class HLSRecorder {
         if (mStManager != null) {
             mStManager.release();
             mStManager = null;
+        }
+    }
+    
+    private void releaseInputSurface(){
+    	if (mInputSurface != null) {
+            mInputSurface.release();
+            mInputSurface = null;
         }
     }
 
@@ -625,6 +620,11 @@ public class HLSRecorder {
     // DEBUGGING
     boolean sawFirstVideoKeyFrame = false;
    
+   // Variables Recycled on each call to drainEncoder
+   final int TIMEOUT_USEC = 100;
+   int encoderStatus;
+   int outBitsSize;
+   int outPacketSize;	
 
     /**
      * Extracts all pending data from the encoder and forwards it to the muxer.
@@ -634,8 +634,6 @@ public class HLSRecorder {
      * Calling this with endOfStream set should be done once, right before stopping the muxer.
      */
     private void drainEncoder(MediaCodec encoder, MediaCodec.BufferInfo bufferInfo, TrackInfo trackInfo, boolean endOfStream) {
-        final int TIMEOUT_USEC = 100;
-
         if (VERBOSE) Log.d(TAG, "drain" + ((encoder == mVideoEncoder) ? "Video" : "Audio") + "Encoder(" + endOfStream + ")");
         if (endOfStream && encoder == mVideoEncoder) {
             if (VERBOSE) Log.d(TAG, "sending EOS to " + ((encoder == mVideoEncoder) ? "video" : "audio") + " encoder");
@@ -644,7 +642,7 @@ public class HLSRecorder {
         ByteBuffer[] encoderOutputBuffers = encoder.getOutputBuffers();
 
         while (true) {
-            int encoderStatus = encoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_USEC);
+            encoderStatus = encoder.dequeueOutputBuffer(bufferInfo, TIMEOUT_USEC);
             if (encoderStatus == MediaCodec.INFO_TRY_AGAIN_LATER) {
                 // no output available yet
                 if (!endOfStream) {
@@ -692,6 +690,7 @@ public class HLSRecorder {
                 	// AVCodecContext from Android's MediaFormat
                 	
                 	if(encoder == mAudioEncoder){
+                		if (TRACE) Trace.beginSection("adtsHeader");
 	                	int outBitsSize = bufferInfo.size;
 	                	int outPacketSize = outBitsSize + ADTS_LENGTH;	                	
 	                	addADTStoPacket(audioPacket, outPacketSize);
@@ -699,16 +698,19 @@ public class HLSRecorder {
 	                    encodedData.position(bufferInfo.offset);
 	                    encodedData.put(audioPacket, 0, outPacketSize);
 	                    bufferInfo.size = outPacketSize;
+	                    if (TRACE) Trace.endSection();
                 	}else if(encoder == mVideoEncoder){
                 		// Copy the CODEC_CONFIG Data
                 		// For H264, this contains the Sequence Parameter Set and
                 		// Picture Parameter Set. We include this data with each keyframe
+                		if (TRACE) Trace.beginSection("copyVideoSPSandPPS");
                 		videoSPSandPPS = ByteBuffer.allocateDirect(bufferInfo.size);
                 		byte[] videoConfig = new byte[bufferInfo.size];
                 		encodedData.get(videoConfig, 0, bufferInfo.size);
                 		encodedData.position(bufferInfo.offset);
                 		encodedData.put(videoConfig, 0, bufferInfo.size);
                 		videoSPSandPPS.put(videoConfig, 0, bufferInfo.size);
+                		if (TRACE) Trace.endSection();
                 		/*
                 		try {
                 			outputStream.write(videoConfig);
@@ -722,21 +724,24 @@ public class HLSRecorder {
                 	}
                 	
                     if (VERBOSE) Log.i(TAG, String.format("Writing codec_config for %s, pts %d size: %d", (encoder == mVideoEncoder) ? "video" : "audio", bufferInfo.presentationTimeUs,  bufferInfo.size));
+                    if (TRACE) Trace.beginSection("writeCodecConfig");
                     ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
-                    
+                    if (TRACE) Trace.endSection();
                     bufferInfo.size = 0;	// prevent writing as normal packet
                 }
 
                 if (bufferInfo.size != 0) {
                 	
                 	if(encoder == mAudioEncoder){
-	                	int outBitsSize = bufferInfo.size;
-	                	int outPacketSize = outBitsSize + ADTS_LENGTH;	                	
+                		if (TRACE) Trace.beginSection("adtsHeader");
+	                	outBitsSize = bufferInfo.size;
+	                	outPacketSize = outBitsSize + ADTS_LENGTH;	                	
 	                	addADTStoPacket(audioPacket, outPacketSize);
 	                    encodedData.get(audioPacket, ADTS_LENGTH, outBitsSize);
 	                    encodedData.position(bufferInfo.offset);
 	                    encodedData.put(audioPacket, 0, outPacketSize);
 	                    bufferInfo.size = outPacketSize;
+	                    if (TRACE) Trace.endSection();
                 	}
                 	
                     // adjust the ByteBuffer values to match BufferInfo (not needed?)
@@ -749,14 +754,20 @@ public class HLSRecorder {
                     	
                     	if(sawFirstVideoKeyFrame){
                     		// Write SPS + PPS
+                    		if (TRACE) Trace.beginSection("writeSPSandPPS");
                     		ffmpeg.writeAVPacketFromEncodedData(videoSPSandPPS, (encoder == mVideoEncoder) ? 1 : 0, 0, videoSPSandPPS.capacity(), bufferInfo.flags, (bufferInfo.presentationTimeUs-1159));
+                    		if (TRACE) Trace.endSection();
                     	}else
                     		sawFirstVideoKeyFrame = true;
                     	// Write Keyframe
+                    	if (TRACE) Trace.beginSection("writeFrame");
                     	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs); 
+                    	if (TRACE) Trace.endSection();
                     }else{
                     	// Write Audio Frame or Non Key Video Frame
+                    	if (TRACE) Trace.beginSection("writeFrame");
                     	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, /* (encoder == mVideoEncoder) ? videoFrameCount++ : audioFrameCount++*/ bufferInfo.presentationTimeUs); 
+                    	if (TRACE) Trace.endSection();
                     }
                     if (VERBOSE)
                         Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
@@ -789,6 +800,8 @@ public class HLSRecorder {
                         Log.d(TAG, "end of " + ((encoder == mVideoEncoder) ? "video" : "audio") + " stream reached. ");
                         if(encoder == mVideoEncoder){
                             stopAndReleaseVideoEncoder();
+                            releaseCamera();
+                            releaseInputSurface();
                         } else if(encoder == mAudioEncoder){
                             stopAndReleaseAudioEncoder();
                         }
@@ -801,6 +814,12 @@ public class HLSRecorder {
         }
     }
     
+    // Variables Recycled by addADTStoPacket
+    int profile = 2;  //AAC LC
+    				  //39=MediaCodecInfo.CodecProfileLevel.AACObjectELD;
+	int freqIdx = 4;  //44.1KHz
+	int chanCfg = 1;  //MPEG-4 Audio Channel Configuration. 1 Channel front-center
+
     /**
      *  Add ADTS header at the beginning of each and every AAC packet.
      *  This is needed as MediaCodec encoder generates a packet of raw
@@ -811,11 +830,6 @@ public class HLSRecorder {
      *  Also: http://wiki.multimedia.cx/index.php?title=MPEG-4_Audio#Channel_Configurations
      **/
     private void addADTStoPacket(byte[] packet, int packetLen) {
-        int profile = 2;  //AAC LC
-                          //39=MediaCodecInfo.CodecProfileLevel.AACObjectELD;
-        int freqIdx = 4;  //44.1KHz
-        int chanCfg = 1;  //MPEG-4 Audio Channel Configuration. 1 Channel front-center
-
         // fill in ADTS data
         packet[0] = (byte)0xFF;	// 11111111  	= syncword
         packet[1] = (byte)0xF9;	// 1111 1 00 1  = syncword MPEG-2 Layer CRC

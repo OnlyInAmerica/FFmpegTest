@@ -8,6 +8,7 @@ import java.util.concurrent.Executors;
 
 import android.content.Context;
 import android.content.Intent;
+import android.os.Trace;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
@@ -26,7 +27,8 @@ import com.readystatesoftware.simpl3r.Uploader.UploadProgressListener;
 public class LiveHLSRecorder extends HLSRecorder{
 	private final String TAG = "LiveHLSRecorder";
 	private final boolean VERBOSE = false; 						// lots of logging
-	private final boolean UPLOAD_TO_S3 = true;					// live uploading
+	private final boolean TRACE = true;						// Enable systrace markers
+	private final boolean UPLOAD_TO_S3 = false;					// live uploading
 	
 	private Context c;
 	private String uuid;										// Recording UUID
@@ -90,11 +92,14 @@ public class LiveHLSRecorder extends HLSRecorder{
 				// Copy m3u8 at this moment and queue it to uploading service
 				final File orig = new File(path);
 				final File copy = new File(temp, orig.getName().replace(".m3u8", "_" + lastSegmentWritten + ".m3u8"));
+				
+				if (TRACE) Trace.beginSection("copyM3u8");
 				try {
 					FileUtils.copy(orig, copy);
 				} catch (IOException e) {
 					e.printStackTrace();
 				}
+				if (TRACE) Trace.endSection();
 				uploadService.submit(new Runnable(){
 
 					@Override
