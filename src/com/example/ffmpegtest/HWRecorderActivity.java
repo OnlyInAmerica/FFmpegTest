@@ -25,30 +25,40 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
+import android.view.Gravity;
+import android.view.LayoutInflater;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
+import android.view.animation.AnimationUtils;
 import android.widget.Button;
+import android.widget.TextSwitcher;
 import android.widget.TextView;
+import android.widget.ViewSwitcher.ViewFactory;
 
 public class HWRecorderActivity extends Activity {
     private static final String TAG = "HWRecorderActivity";
     boolean recording = false;
     LiveHLSRecorder liveRecorder;
     
-    TextView urlLabel;
+    TextView liveIndicator;
     String broadcastUrl;
 
     //GLSurfaceView glSurfaceView;
     //GlSurfaceViewRenderer glSurfaceViewRenderer = new GlSurfaceViewRenderer();
+    LayoutInflater inflater;
 
     protected void onCreate (Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
+        requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_hwrecorder);
-        urlLabel = (TextView) findViewById(R.id.urlLabel);
+        inflater = (LayoutInflater) this.getSystemService(LAYOUT_INFLATER_SERVICE);
+        liveIndicator = (TextView) findViewById(R.id.liveLabel);
         //glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
         //glSurfaceView.setRenderer(glSurfaceViewRenderer);
         
@@ -78,6 +88,7 @@ public class HWRecorderActivity extends Activity {
     public void onRecordButtonClicked(View v){
         if(!recording){
         	broadcastUrl = null;
+        	
             try {
                 liveRecorder = new LiveHLSRecorder(getApplicationContext());
                 liveRecorder.startRecording(null);
@@ -88,8 +99,7 @@ public class HWRecorderActivity extends Activity {
         }else{
             liveRecorder.stopRecording();
             ((Button) v).setText("Start Recording");
-            urlLabel.setVisibility(View.GONE);
-            urlLabel.setText("");
+        	liveIndicator.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_to_left));
         }
         recording = !recording;
     }
@@ -100,8 +110,8 @@ public class HWRecorderActivity extends Activity {
     	    // Get extra data included in the Intent
     		if (LiveHLSRecorder.HLS_STATUS.LIVE ==  (LiveHLSRecorder.HLS_STATUS) intent.getSerializableExtra("status")){
     			broadcastUrl = intent.getStringExtra("url");
-        	    urlLabel.setText("Recording is Live!");
-        	    urlLabel.setVisibility(View.VISIBLE);
+    			liveIndicator.startAnimation(AnimationUtils.loadAnimation(getApplicationContext(), R.anim.slide_from_left));
+            	liveIndicator.setVisibility(View.VISIBLE);
     		}  
     	  }
     };

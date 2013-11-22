@@ -49,11 +49,7 @@ import android.os.Trace;
 import android.util.Log;
 import android.view.Surface;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.FileWriter;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -61,8 +57,8 @@ import java.nio.FloatBuffer;
 import java.util.List;
 import java.util.UUID;
 
-import com.example.ffmpegtest.FFmpegWrapper;
 import com.example.ffmpegtest.FileUtils;
+import com.example.ffmpegtest.recorder.FFmpegWrapper.AVOptions;
 
 /**
  * Records video in gapless chunks of fixed duration.
@@ -174,11 +170,6 @@ public class HLSRecorder {
         mInputSurface.mEGLDisplayContext = context;
     }
     */
-    
-    // DEBUGGING
-	File videoHeader;
-	FileOutputStream outputStream;
-	byte[] delimiter = new byte[]{1,2,3,4,5,5,4,3,2,1};
 
     /**
      * Start recording within the given root directory
@@ -194,17 +185,15 @@ public class HLSRecorder {
         
         // TODO: Create Base HWRecorder class and subclass to provide output format, codecs etc
         mM3U8 = new File(mOutputDir, System.currentTimeMillis() + ".m3u8");
+        
+        AVOptions opts = new AVOptions();
+        opts.videoHeight 		= VIDEO_HEIGHT;
+        opts.videoWidth 		= VIDEO_WIDTH;
+        opts.audioSampleRate 	= SAMPLE_RATE;
+        opts.numAudioChannels 	= (CHANNEL_CONFIG == AudioFormat.CHANNEL_IN_STEREO) ? 2 : 1;
+        ffmpeg.setAVOptions(opts);
         ffmpeg.prepareAVFormatContext(mM3U8.getAbsolutePath());
         
-        // DEBUGGING
-        videoHeader = new File(FileUtils.getRootStorageDirectory(c, mRootStorageDirName), "videoHeader_" + mUUID);
-        try {
-			outputStream = new FileOutputStream(videoHeader);
-		} catch (FileNotFoundException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
-        // END DEBUGGING
         Thread encodingThread = new Thread(new Runnable(){
 
             @Override
@@ -310,13 +299,7 @@ public class HLSRecorder {
         fullStopReceived = true;
         double recordingDurationSec = (System.nanoTime() - startTime) / 1000000000.0;
         Log.i(TAG, "Recorded " + recordingDurationSec + " s. Expected " + (FRAME_RATE * recordingDurationSec) + " frames. Got " + totalFrameCount + " for " + (totalFrameCount / recordingDurationSec) + " fps");
-        // DEBUGGING
-        try {
-			outputStream.close();
-		} catch (IOException e) {
-			// TODO Auto-generated catch block
-			e.printStackTrace();
-		}
+       
     }
 
     private void setupAudioRecord(){
@@ -366,7 +349,7 @@ public class HLSRecorder {
                     	drainEncoder(mAudioEncoder, mAudioBufferInfo, mAudioTrackInfo, true);
                     }
                 }
-            });
+            }, "Audio");
             audioEncodingThread.setPriority(Thread.MAX_PRIORITY);
             audioEncodingThread.start();
 
@@ -711,16 +694,6 @@ public class HLSRecorder {
                 		encodedData.put(videoConfig, 0, bufferInfo.size);
                 		videoSPSandPPS.put(videoConfig, 0, bufferInfo.size);
                 		if (TRACE) Trace.endSection();
-                		/*
-                		try {
-                			outputStream.write(videoConfig);
-                			outputStream.write(delimiter);
-                			Log.i(TAG, "Wrote small video data to " + videoHeader.getAbsolutePath());
-                		} catch (Exception e) {
-                			Log.i(TAG, "Error writing small video data to " + videoHeader.getAbsolutePath());
-                			e.printStackTrace();
-                		}
-                		*/
                 	}
                 	
                     if (VERBOSE) Log.i(TAG, String.format("Writing codec_config for %s, pts %d size: %d", (encoder == mVideoEncoder) ? "video" : "audio", bufferInfo.presentationTimeUs,  bufferInfo.size));
@@ -771,23 +744,7 @@ public class HLSRecorder {
                     }
                     if (VERBOSE)
                         Log.d(TAG, "sent " + bufferInfo.size + ((encoder == mVideoEncoder) ? " video" : " audio") + " bytes to muxer with pts " + bufferInfo.presentationTimeUs);
-                
-                    /*
-                    if(encoder == mVideoEncoder && bufferInfo.size < 20){
-                		// Write bits to disk for inspection                		
-                		try {
-                			byte[] data = new byte[bufferInfo.size];
-                			encodedData.get(data, 0, bufferInfo.size);
-                			outputStream.write(data);
-                			outputStream.write(delimiter);
-                			
-                			Log.i(TAG, "Wrote small video data to " + videoHeader.getAbsolutePath());
-                		} catch (Exception e) {
-                			Log.i(TAG, "Error writing small video data to " + videoHeader.getAbsolutePath());
-                			e.printStackTrace();
-                		}
-                    }
-                    */
+
                 }
 
                 encoder.releaseOutputBuffer(encoderStatus, false);

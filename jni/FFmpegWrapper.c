@@ -295,86 +295,11 @@ int writeFileTrailer(AVFormatContext *avfc){
   //  JNI FUNCTIONS  //
   /////////////////////
 
-void Java_com_example_ffmpegtest_FFmpegWrapper_test(JNIEnv *env, jobject obj){
-  /* Standalone test copying input file to output, frame by frame
-   * I've confirmed this works. Pardon the hardcoded input/output paths
-   */
-
- // Ensure gdb is connected before proceeding
- int i = 0;
- while(i>0){
-	 i++;
- }
-  // Init
-
-  init();
-
-  AVFormatContext *inputFormatContext;
-  outputPath = "/sdcard/ffmpeg_output.mp4";
-
-  outputFormatContext = avFormatContextForOutputPath(outputPath, outputFormatName);
-  LOGI("post avFormatContextForOutputPath");
-  inputFormatContext = avFormatContextForInputPath(sampleFilePath, NULL);
-  LOGI("post avFormatContextForInputPath");
-  copyAVFormatContext(&outputFormatContext, &inputFormatContext);
-  LOGI("post copyAVFormatContext");
-
-  int result = openFileForWriting(outputFormatContext, outputPath);
-  if(result < 0){
-      LOGE("openFileForWriting error: %d", result);
-  }
-
-  writeFileHeader(outputFormatContext);
-
-  // Copy input to output frame by frame
-
-  AVPacket *inputPacket;
-  inputPacket = av_malloc(sizeof(AVPacket));
-
-  int continueRecording = 1;
-  int avReadResult = 0;
-  int writeFrameResult = 0;
-  int frameCount = 0;
-  while(continueRecording == 1){
-	  LOGI("pre av_read_frame");
-      avReadResult = av_read_frame(inputFormatContext, inputPacket);
-      LOGI("post av_read_frame");
-      frameCount++;
-      if(avReadResult != 0){
-        if (avReadResult != AVERROR_EOF) {
-        	LOGE("av_read_frame error");
-            LOGE("av_read_frame error: %s", stringForAVErrorNumber(avReadResult));
-        }else{
-            LOGI("End of input file");
-        }
-
-        continueRecording = 0;
-      }
-
-      AVStream *outStream = outputFormatContext->streams[inputPacket->stream_index];
-      LOGI("About to write packet");
-      //LOGI("About to write packet. pts: (val: %ld, num: %ls den: %ld), time_base: %d/%d", (long) outStream->pts.val, (long) outStream->pts.num, (long) outStream->pts.den, outStream->time_base.num, outStream->time_base.den);
-      writeFrameResult = av_interleaved_write_frame(outputFormatContext, inputPacket);
-      LOGI("av_interleaved_write_frame");
-      if(writeFrameResult < 0){
-          LOGE("av_interleaved_write_frame error: %s", stringForAVErrorNumber(avReadResult));
-      }
-  }
-  LOGI("Finished reading input file. #frames : %d", frameCount);
-
-  // Finalize
-  int writeTrailerResult = writeFileTrailer(outputFormatContext);
-  if(writeTrailerResult < 0){
-      LOGE("av_write_trailer error: %s", stringForAVErrorNumber(writeTrailerResult));
-  }
-  LOGI("Wrote trailer");
-}
-
 /*
  * Prepares an AVFormatContext for output.
  * Currently, the output format and codecs are hardcoded in this file.
  */
-void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *env, jobject obj, jstring jOutputPath){
+void Java_com_example_ffmpegtest_recorder_FFmpegWrapper_prepareAVFormatContext(JNIEnv *env, jobject obj, jstring jOutputPath){
     init();
 
     // Create AVRational that expects timestamps in microseconds
@@ -414,10 +339,39 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_prepareAVFormatContext(JNIEnv *en
 }
 
 /*
+ * Override default AV Options. Must be called before prepareAVFormatContext
+ */
+
+void Java_com_example_ffmpegtest_recorder_FFmpegWrapper_setAVOptions(JNIEnv *env, jobject obj, jobject jOpts){
+	// 1: Get your Java object's "jclass"!
+	jclass ClassAVOptions = (*env)->GetObjectClass(env, jOpts);
+
+	// 2: Get Java object field ids using the jclasss and field name as **hardcoded** strings!
+	jfieldID jVideoHeightId = (*env)->GetFieldID(env, ClassAVOptions, "videoHeight", "I");
+	jfieldID jVideoWidthId = (*env)->GetFieldID(env, ClassAVOptions, "videoWidth", "I");
+
+	jfieldID jAudioSampleRateId = (*env)->GetFieldID(env, ClassAVOptions, "audioSampleRate", "I");
+	jfieldID jNumAudioChannelsId = (*env)->GetFieldID(env, ClassAVOptions, "numAudioChannels", "I");
+
+	jfieldID jHlsSegmentDurationSec = (*env)->GetFieldID(env, ClassAVOptions, "hlsSegmentDurationSec", "I");
+
+	// 3: Get the Java object field values with the field ids!
+	VIDEO_HEIGHT = (*env)->GetIntField(env, jOpts, jVideoHeightId);
+	VIDEO_WIDTH = (*env)->GetIntField(env, jOpts, jVideoWidthId);
+
+	AUDIO_SAMPLE_RATE = (*env)->GetIntField(env, jOpts, jAudioSampleRateId);
+	AUDIO_CHANNELS = (*env)->GetIntField(env, jOpts, jNumAudioChannelsId);
+
+	hlsSegmentDurationSec = (*env)->GetIntField(env, jOpts, jHlsSegmentDurationSec);
+
+	// that's how easy love can be!
+}
+
+/*
  * Consruct an AVPacket from MediaCodec output and call
  * av_interleaved_write_frame with our AVFormatContext
  */
-void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIEnv *env, jobject obj, jobject jData, jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong jPts){
+void Java_com_example_ffmpegtest_recorder_FFmpegWrapper_writeAVPacketFromEncodedData(JNIEnv *env, jobject obj, jobject jData, jint jIsVideo, jint jOffset, jint jSize, jint jFlags, jlong jPts){
     if(packet == NULL){
         packet = av_malloc(sizeof(AVPacket));
         LOGI("av_malloc packet");
@@ -475,7 +429,7 @@ void Java_com_example_ffmpegtest_FFmpegWrapper_writeAVPacketFromEncodedData(JNIE
 /*
  * Finalize file. Basically a wrapper around av_write_trailer
  */
-void Java_com_example_ffmpegtest_FFmpegWrapper_finalizeAVFormatContext(JNIEnv *env, jobject obj){
+void Java_com_example_ffmpegtest_recorder_FFmpegWrapper_finalizeAVFormatContext(JNIEnv *env, jobject obj){
     LOGI("finalizeAVFormatContext");
     int writeTrailerResult = writeFileTrailer(outputFormatContext);
     if(writeTrailerResult < 0){
