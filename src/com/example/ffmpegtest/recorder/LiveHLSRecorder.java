@@ -64,10 +64,10 @@ public class LiveHLSRecorder extends HLSRecorder{
 	 */
 	@Override
 	public void startRecording(final String outputDir){
+		super.startRecording(outputDir);
 		temp = new File(getOutputDirectory(), "temp");	// make temp directory for .m3u8s for each upload state
 		temp.mkdirs();
 		sentIsLiveBroadcast = false;
-		super.startRecording(outputDir);
 		if (!UPLOAD_TO_S3) return;
         observer = new HLSFileObserver(getOutputDirectory().getAbsolutePath(), new HLSCallback(){
 

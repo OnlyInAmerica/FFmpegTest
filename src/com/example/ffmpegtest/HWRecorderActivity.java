@@ -20,7 +20,6 @@ package com.example.ffmpegtest;
 import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
-import com.example.ffmpegtest.recorder.HLSRecorder;
 import com.example.ffmpegtest.recorder.LiveHLSRecorder;
 
 import android.app.Activity;
@@ -28,26 +27,17 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.graphics.Color;
-import android.opengl.EGL14;
-import android.opengl.EGLContext;
-import android.opengl.EGLDisplay;
-import android.opengl.EGLSurface;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.AnimationUtils;
-import android.widget.Button;
-import android.widget.TextSwitcher;
 import android.widget.TextView;
-import android.widget.ViewSwitcher.ViewFactory;
 
 public class HWRecorderActivity extends Activity {
     private static final String TAG = "HWRecorderActivity";
@@ -111,6 +101,14 @@ public class HWRecorderActivity extends Activity {
             }
         }else{
             liveRecorder.stopRecording();
+            glSurfaceView.queueEvent(new Runnable(){
+
+				@Override
+				public void run() {
+					liveRecorder.encodeVideoFrame();
+				}
+            	
+            });
             //((Button) v).setText("Start Recording");
         	liveIndicator.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_to_left));
         }
@@ -143,7 +141,7 @@ public class HWRecorderActivity extends Activity {
     } 
     
     public class GLSurfaceViewRenderer implements GLSurfaceView.Renderer{
-
+    	
         @Override
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
             Log.i(TAG, "GLSurfaceView created");
@@ -164,7 +162,10 @@ public class HWRecorderActivity extends Activity {
 
         @Override
         public void onDrawFrame(GL10 gl) {
-        	Log.i("GLSurfaceView", "onDrawFrame");
+        	//Log.i("GLSurfaceView", "onDrawFrame. recording: " + recording);
+        	if(recording){
+        		liveRecorder.encodeVideoFrame();
+        	}
         }
     }
     

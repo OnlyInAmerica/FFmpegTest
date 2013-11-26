@@ -167,6 +167,8 @@ public class HLSRecorder {
     	return mM3U8;
     }
     
+    
+    SurfaceTexture st;
 
     /**
      * Start recording within the given root directory
@@ -193,8 +195,11 @@ public class HLSRecorder {
         ffmpeg.setAVOptions(opts);
         ffmpeg.prepareAVFormatContext(mM3U8.getAbsolutePath());
         
-        //_startRecording(outputDir);
+		startWhen = System.nanoTime();
         
+        setupAudioRecord();
+        startAudioRecord();
+        /*
         Thread encodingThread = new Thread(new Runnable(){
 
             @Override
@@ -204,6 +209,7 @@ public class HLSRecorder {
         }, TAG);
         encodingThread.setPriority(Thread.MAX_PRIORITY);
         encodingThread.start();
+        */
         
     }
 
@@ -226,7 +232,7 @@ public class HLSRecorder {
             mInputSurface.makeEncodeContextCurrent();
             prepareSurfaceTexture();
             */
-            setupAudioRecord();
+            //setupAudioRecord();
             if (TRACE) Trace.endSection();
 
 
@@ -235,7 +241,7 @@ public class HLSRecorder {
             if (TRACE) Trace.beginSection("startMediaRecorder");
             if (useMediaRecorder) mMediaRecorderWrapper = new MediaRecorderWrapper(c, outputHq.getAbsolutePath(), mCamera);
             */
-            startAudioRecord();
+            //startAudioRecord();
             /*
             if (useMediaRecorder) mMediaRecorderWrapper.startRecording();
             if (TRACE) Trace.endSection();
@@ -300,6 +306,69 @@ public class HLSRecorder {
             e.printStackTrace();
         } finally {
         }
+    }
+    
+    /**
+     * To be called by GLSurfaceView's onDraw method,
+     * from its rendering thread
+     */
+    public void encodeVideoFrame(){
+    	if(fullStopReceived){
+    		synchronized (sync){
+                if (TRACE) Trace.beginSection("drainVideo");
+                drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, true);
+                if (TRACE) Trace.endSection();
+            }
+    		return;
+    	}
+    	if(!firstFrameReady){
+    		Log.i(TAG, "first encodeVideoFrame. Starting camera preview");
+            mCamera.startPreview();
+            //SurfaceTexture st = mStManager.getSurfaceTexture();
+            eosReceived = false;
+    	}
+    	synchronized (sync){
+            if (TRACE) Trace.beginSection("drainVideo");
+            drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, false);
+            if (TRACE) Trace.endSection();
+        }
+
+        //videoFrameCount++;
+        totalFrameCount++;
+
+        // Acquire a new frame of input, and render it to the Surface.  If we had a
+        // GLSurfaceView we could switch EGL contexts and call drawImage() a second
+        // time to render it on screen.  The texture can be shared between contexts by
+        // passing the GLSurfaceView's EGLContext as eglCreateContext()'s share_context
+        // argument.
+        mInputSurface.makeEncodeContextCurrent();
+        if (TRACE) Trace.beginSection("awaitImage");
+        mStManager.awaitNewImage();
+        if (TRACE) Trace.endSection();
+        if (TRACE) Trace.beginSection("drawImage");
+        mStManager.drawImage();
+        if (TRACE) Trace.endSection();
+        restoreRenderState();
+        mStManager.drawImage();
+        mInputSurface.makeEncodeContextCurrent();
+
+
+        // Set the presentation time stamp from the SurfaceTexture's time stamp.  This
+        // will be used by MediaMuxer to set the PTS in the video.
+        mInputSurface.setPresentationTime(st.getTimestamp() - startWhen);
+
+        // Submit it to the encoder.  The eglSwapBuffers call will block if the input
+        // is full, which would be bad if it stayed full until we dequeued an output
+        // buffer (which we can't do, since we're stuck here).  So long as we fully drain
+        // the encoder before supplying additional input, the system guarantees that we
+        // can supply another frame without blocking.
+        if (VERBOSE) Log.d(TAG, "sending frame to encoder");
+        if (TRACE) Trace.beginSection("swapBuffers");
+        mInputSurface.swapBuffers();
+        if (TRACE) Trace.endSection();
+        if (!firstFrameReady) startTime = System.nanoTime();
+        firstFrameReady = true;
+        restoreRenderState();
     }
 
     public void stopRecording(){
@@ -579,6 +648,11 @@ public class HLSRecorder {
 		videoEncoderStopped = false;
 		//mInputSurface.makeEncodeContextCurrent();
 		prepareSurfaceTexture();
+		startWhen = System.nanoTime();
+
+        mCamera.startPreview();
+        st = mStManager.getSurfaceTexture();
+        eosReceived = false;
 		 
 		mAudioEncoder.start();
 		audioEncoderStopped = false;
