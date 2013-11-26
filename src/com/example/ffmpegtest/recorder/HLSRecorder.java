@@ -166,8 +166,7 @@ public class HLSRecorder {
     	}
     	return mM3U8;
     }
-    
-    
+
     SurfaceTexture st;
 
     /**
@@ -199,114 +198,8 @@ public class HLSRecorder {
         
         setupAudioRecord();
         startAudioRecord();
-        /*
-        Thread encodingThread = new Thread(new Runnable(){
-
-            @Override
-            public void run() {
-                _startRecording(outputDir);
-            }
-        }, TAG);
-        encodingThread.setPriority(Thread.MAX_PRIORITY);
-        encodingThread.start();
-        */
-        
     }
 
-    /**
-     * This method prepares and starts the ChunkedHWRecorder
-     * Must be called after beginPreparingEncoders and
-     * finishPreparingEncoders
-     * @param outputDir
-     */
-    private void _startRecording(String outputDir){
-        //int framesPerChunk = (int) CHUNK_DURATION_SEC * FRAME_RATE;
-        Log.d(TAG, VIDEO_MIME_TYPE + " output " + VIDEO_WIDTH + "x" + VIDEO_HEIGHT + " @" + VIDEO_BIT_RATE);
-
-        try {
-            if (TRACE) Trace.beginSection("prepare");
-            mInputSurface.makeEncodeContextCurrent();
-            /*
-            prepareCamera(VIDEO_WIDTH, VIDEO_HEIGHT, Camera.CameraInfo.CAMERA_FACING_BACK);
-            beginPreparingEncoders();
-            mInputSurface.makeEncodeContextCurrent();
-            prepareSurfaceTexture();
-            */
-            //setupAudioRecord();
-            if (TRACE) Trace.endSection();
-
-
-            /*
-            File outputHq = FileUtils.createTempFileInRootAppStorage(c, "hq.mp4");
-            if (TRACE) Trace.beginSection("startMediaRecorder");
-            if (useMediaRecorder) mMediaRecorderWrapper = new MediaRecorderWrapper(c, outputHq.getAbsolutePath(), mCamera);
-            */
-            //startAudioRecord();
-            /*
-            if (useMediaRecorder) mMediaRecorderWrapper.startRecording();
-            if (TRACE) Trace.endSection();
-            */
-            startWhen = System.nanoTime();
-
-            mCamera.startPreview();
-            SurfaceTexture st = mStManager.getSurfaceTexture();
-            eosReceived = false;
-
-            // The video encoding loop:
-            while (!fullStopReceived) {
-                synchronized (sync){
-                    if (TRACE) Trace.beginSection("drainVideo");
-                    drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, false);
-                    if (TRACE) Trace.endSection();
-                }
-
-                //videoFrameCount++;
-                totalFrameCount++;
-
-                // Acquire a new frame of input, and render it to the Surface.  If we had a
-                // GLSurfaceView we could switch EGL contexts and call drawImage() a second
-                // time to render it on screen.  The texture can be shared between contexts by
-                // passing the GLSurfaceView's EGLContext as eglCreateContext()'s share_context
-                // argument.
-                if (TRACE) Trace.beginSection("awaitImage");
-                mStManager.awaitNewImage();
-                if (TRACE) Trace.endSection();
-                if (TRACE) Trace.beginSection("drawImage");
-                mStManager.drawImage();
-                if (TRACE) Trace.endSection();
-                restoreRenderState();
-                mStManager.drawImage();
-                mInputSurface.makeEncodeContextCurrent();
-
-
-                // Set the presentation time stamp from the SurfaceTexture's time stamp.  This
-                // will be used by MediaMuxer to set the PTS in the video.
-                mInputSurface.setPresentationTime(st.getTimestamp() - startWhen);
-
-                // Submit it to the encoder.  The eglSwapBuffers call will block if the input
-                // is full, which would be bad if it stayed full until we dequeued an output
-                // buffer (which we can't do, since we're stuck here).  So long as we fully drain
-                // the encoder before supplying additional input, the system guarantees that we
-                // can supply another frame without blocking.
-                if (VERBOSE) Log.d(TAG, "sending frame to encoder");
-                if (TRACE) Trace.beginSection("swapBuffers");
-                mInputSurface.swapBuffers();
-                if (TRACE) Trace.endSection();
-                if (!firstFrameReady) startTime = System.nanoTime();
-                firstFrameReady = true;
-
-            }
-            Log.i(TAG, "Exited video encode loop. Draining video encoder");
-            synchronized(sync){
-            	drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, true);
-            }
-
-        } catch (Exception e){
-            Log.e(TAG, "Encoding loop exception!");
-            e.printStackTrace();
-        } finally {
-        }
-    }
     
     /**
      * To be called by GLSurfaceView's onDraw method,
@@ -341,18 +234,16 @@ public class HLSRecorder {
         // time to render it on screen.  The texture can be shared between contexts by
         // passing the GLSurfaceView's EGLContext as eglCreateContext()'s share_context
         // argument.
+        if (TRACE) Trace.beginSection("makeEncodeContextCurrent");
         mInputSurface.makeEncodeContextCurrent();
+        if (TRACE) Trace.endSection();
         if (TRACE) Trace.beginSection("awaitImage");
         mStManager.awaitNewImage();
         if (TRACE) Trace.endSection();
-        if (TRACE) Trace.beginSection("drawImage");
+        if (TRACE) Trace.beginSection("drawImageToEncoder");
         mStManager.drawImage();
         if (TRACE) Trace.endSection();
-        restoreRenderState();
-        mStManager.drawImage();
-        mInputSurface.makeEncodeContextCurrent();
-
-
+        
         // Set the presentation time stamp from the SurfaceTexture's time stamp.  This
         // will be used by MediaMuxer to set the PTS in the video.
         mInputSurface.setPresentationTime(st.getTimestamp() - startWhen);
@@ -368,7 +259,14 @@ public class HLSRecorder {
         if (TRACE) Trace.endSection();
         if (!firstFrameReady) startTime = System.nanoTime();
         firstFrameReady = true;
+        
+        if (TRACE) Trace.beginSection("makeDisplayContextCurrent");
         restoreRenderState();
+        if (TRACE) Trace.endSection();
+        if (TRACE) Trace.beginSection("drawImageToDisplay");
+        mStManager.drawImage();
+        if (TRACE) Trace.endSection();
+        
     }
 
     public void stopRecording(){
@@ -648,7 +546,7 @@ public class HLSRecorder {
 		videoEncoderStopped = false;
 		//mInputSurface.makeEncodeContextCurrent();
 		prepareSurfaceTexture();
-		startWhen = System.nanoTime();
+		//startWhen = System.nanoTime();
 
         mCamera.startPreview();
         st = mStManager.getSurfaceTexture();
@@ -742,19 +640,8 @@ public class HLSRecorder {
                 encoderOutputBuffers = encoder.getOutputBuffers();
             } else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 // should happen before receiving buffers, and should only happen once
-
-                // Previously, we fed newFormat to Android's MediaMuxer
-                // Perhaps this is where we should adapt Android's MediaFormat
-                // to FFmpeg's AVCodecContext
-                
-                /* Old code for Android's MediaMuxer:
-                 
-                MediaFormat newFormat = encoder.getOutputFormat();
-                trackInfo.index = muxerWrapper.addTrack(newFormat);
-                if(!muxerWrapper.allTracksAdded())
-                    break;
-                */
-
+            	// All the header information FFmpeg needs for H264 video comes in the
+            	// BUFFER_FLAG_CODEC_CONFIG call.
             } else if (encoderStatus < 0) {
                 Log.w(TAG, "unexpected result from encoder.dequeueOutputBuffer: " +
                         encoderStatus);
@@ -768,13 +655,6 @@ public class HLSRecorder {
 
                 
                 if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
-                    // Previously we ignored this state due to having fed Android's
-                	// MediaFormat to MediaMuxer. See above condition for:
-                	// else if (encoderStatus == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED)
-                	
-                	// Perhaps we should concentrate on setting FFmpeg's
-                	// AVCodecContext from Android's MediaFormat
-                	
                 	if(encoder == mAudioEncoder){
                 		if (TRACE) Trace.beginSection("adtsHeader");
 	                	int outBitsSize = bufferInfo.size;
@@ -786,9 +666,8 @@ public class HLSRecorder {
 	                    bufferInfo.size = outPacketSize;
 	                    if (TRACE) Trace.endSection();
                 	}else if(encoder == mVideoEncoder){
-                		// Copy the CODEC_CONFIG Data
-                		// For H264, this contains the Sequence Parameter Set and
-                		// Picture Parameter Set. We include this data with each keyframe
+                		// For H264, the BUFFER_FLAG_CODEC_CONFIG data contains the Sequence Parameter Set and
+                		// Picture Parameter Set. We include this data immediately before each IDR keyframe
                 		if (TRACE) Trace.beginSection("copyVideoSPSandPPS");
                 		videoSPSandPPS = ByteBuffer.allocateDirect(bufferInfo.size);
                 		byte[] videoConfig = new byte[bufferInfo.size];
@@ -798,11 +677,7 @@ public class HLSRecorder {
                 		videoSPSandPPS.put(videoConfig, 0, bufferInfo.size);
                 		if (TRACE) Trace.endSection();
                 	}
-                	
-                    if (VERBOSE) Log.i(TAG, String.format("Writing codec_config for %s, pts %d size: %d", (encoder == mVideoEncoder) ? "video" : "audio", bufferInfo.presentationTimeUs,  bufferInfo.size));
-                    if (TRACE) Trace.beginSection("writeCodecConfig");
-                    ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs);
-                    if (TRACE) Trace.endSection();
+
                     bufferInfo.size = 0;	// prevent writing as normal packet
                 }
 
@@ -825,16 +700,12 @@ public class HLSRecorder {
                     encodedData.limit(bufferInfo.offset + bufferInfo.size);
                     
                     if(encoder == mVideoEncoder && (bufferInfo.flags & MediaCodec.BUFFER_FLAG_SYNC_FRAME) != 0){
-                    	// A hack! Preceed every keyframe with the Sequence Parameter Set and Picture Parameter Set generated
-                    	// by MediaCodec in the CODEC_CONFIG buffer.
-                    	
-                    	if(sawFirstVideoKeyFrame){
-                    		// Write SPS + PPS
-                    		if (TRACE) Trace.beginSection("writeSPSandPPS");
-                    		ffmpeg.writeAVPacketFromEncodedData(videoSPSandPPS, (encoder == mVideoEncoder) ? 1 : 0, 0, videoSPSandPPS.capacity(), bufferInfo.flags, (bufferInfo.presentationTimeUs-1159));
-                    		if (TRACE) Trace.endSection();
-                    	}else
-                    		sawFirstVideoKeyFrame = true;
+                    	// Precede every keyframe with the Sequence Parameter Set and Picture Parameter Set generated
+                    	// by MediaCodec in the CODEC_CONFIG output buffer.
+                		if (TRACE) Trace.beginSection("writeSPSandPPS");
+                		ffmpeg.writeAVPacketFromEncodedData(videoSPSandPPS, (encoder == mVideoEncoder) ? 1 : 0, 0, videoSPSandPPS.capacity(), bufferInfo.flags, (bufferInfo.presentationTimeUs-1159));
+                		if (TRACE) Trace.endSection();
+
                     	// Write Keyframe
                     	if (TRACE) Trace.beginSection("writeFrame");
                     	ffmpeg.writeAVPacketFromEncodedData(encodedData, (encoder == mVideoEncoder) ? 1 : 0, bufferInfo.offset, bufferInfo.size, bufferInfo.flags, bufferInfo.presentationTimeUs); 

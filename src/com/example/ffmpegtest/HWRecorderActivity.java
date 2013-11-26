@@ -60,7 +60,7 @@ public class HWRecorderActivity extends Activity {
         liveIndicator = (TextView) findViewById(R.id.liveLabel);
         glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
         glSurfaceView.setEGLContextClientVersion(2);
-        glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
+        //glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
         glSurfaceView.setRenderer(glSurfaceViewRenderer);
         
         LocalBroadcastManager.getInstance(this).registerReceiver(mMessageReceiver,
@@ -162,7 +162,6 @@ public class HWRecorderActivity extends Activity {
 
         @Override
         public void onDrawFrame(GL10 gl) {
-        	//Log.i("GLSurfaceView", "onDrawFrame. recording: " + recording);
         	if(recording){
         		liveRecorder.encodeVideoFrame();
         	}
