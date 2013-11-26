@@ -81,6 +81,7 @@ public class HLSRecorder {
     private File mM3U8;													// .m3u8 playlist file
     
     // Video Encoder
+    private static final int PREFERRED_CAMERA = Camera.CameraInfo.CAMERA_FACING_BACK;
     private MediaCodec mVideoEncoder;
     private MediaCodec.BufferInfo mVideoBufferInfo;
     private CodecInputSurface mInputSurface;							// Encoder input Surface
@@ -143,6 +144,7 @@ public class HLSRecorder {
     
     public HLSRecorder(Context c){
     	this.c = c;
+    	beginPreparingEncoders();
     }
     
     public String getUUID(){
@@ -164,12 +166,7 @@ public class HLSRecorder {
     	}
     	return mM3U8;
     }
-        
-    /* TODO: Display surface
-    public void setDisplayEGLContext(EGLContext context){
-        mInputSurface.mEGLDisplayContext = context;
-    }
-    */
+    
 
     /**
      * Start recording within the given root directory
@@ -178,6 +175,8 @@ public class HLSRecorder {
      * @param outputDir
      */
     public void startRecording(final String outputDir){
+    	if(mInputSurface == null)
+    		throw new RuntimeException("mInputSurface is null on startRecording. Did you call finishPreparingEncoders?");
         if(outputDir != null)
             mRootStorageDirName = outputDir;
         mUUID = UUID.randomUUID().toString();
@@ -194,6 +193,8 @@ public class HLSRecorder {
         ffmpeg.setAVOptions(opts);
         ffmpeg.prepareAVFormatContext(mM3U8.getAbsolutePath());
         
+        //_startRecording(outputDir);
+        
         Thread encodingThread = new Thread(new Runnable(){
 
             @Override
@@ -203,11 +204,13 @@ public class HLSRecorder {
         }, TAG);
         encodingThread.setPriority(Thread.MAX_PRIORITY);
         encodingThread.start();
+        
     }
 
     /**
      * This method prepares and starts the ChunkedHWRecorder
-     * The loop
+     * Must be called after beginPreparingEncoders and
+     * finishPreparingEncoders
      * @param outputDir
      */
     private void _startRecording(String outputDir){
@@ -216,10 +219,13 @@ public class HLSRecorder {
 
         try {
             if (TRACE) Trace.beginSection("prepare");
+            mInputSurface.makeEncodeContextCurrent();
+            /*
             prepareCamera(VIDEO_WIDTH, VIDEO_HEIGHT, Camera.CameraInfo.CAMERA_FACING_BACK);
-            prepareEncoder();
+            beginPreparingEncoders();
             mInputSurface.makeEncodeContextCurrent();
             prepareSurfaceTexture();
+            */
             setupAudioRecord();
             if (TRACE) Trace.endSection();
 
@@ -242,7 +248,6 @@ public class HLSRecorder {
 
             // The video encoding loop:
             while (!fullStopReceived) {
-                //audioEosRequested = eosReceived;  //XXX Remove. Artifact from segmenting at this layer
                 synchronized (sync){
                     if (TRACE) Trace.beginSection("drainVideo");
                     drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, false);
@@ -263,6 +268,9 @@ public class HLSRecorder {
                 if (TRACE) Trace.beginSection("drawImage");
                 mStManager.drawImage();
                 if (TRACE) Trace.endSection();
+                restoreRenderState();
+                mStManager.drawImage();
+                mInputSurface.makeEncodeContextCurrent();
 
 
                 // Set the presentation time stamp from the SurfaceTexture's time stamp.  This
@@ -515,10 +523,11 @@ public class HLSRecorder {
     }
 
     /**
+     * Call before display GLSurfaceView's onSurfaceCreated method called.
      * Configures encoder and muxer state, and prepares the input Surface.  Initializes
      * mVideoEncoder, mMuxerWrapper, mInputSurface, mVideoBufferInfo, mVideoTrackInfo, and mMuxerStarted.
      */
-    private void prepareEncoder() {
+    private void beginPreparingEncoders() {
         fullStopReceived = false;
         mVideoBufferInfo = new MediaCodec.BufferInfo();
         mVideoTrackInfo = new TrackInfo();
@@ -543,9 +552,6 @@ public class HLSRecorder {
         // take eglGetCurrentContext() as the share_context argument.
         mVideoEncoder = MediaCodec.createEncoderByType(VIDEO_MIME_TYPE);
         mVideoEncoder.configure(mVideoFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        mInputSurface = new CodecInputSurface(mVideoEncoder.createInputSurface());
-        mVideoEncoder.start();
-        videoEncoderStopped = false;
 
         mAudioBufferInfo = new MediaCodec.BufferInfo();
         mAudioTrackInfo = new TrackInfo();
@@ -560,8 +566,31 @@ public class HLSRecorder {
 
         mAudioEncoder = MediaCodec.createEncoderByType(AUDIO_MIME_TYPE);
         mAudioEncoder.configure(mAudioFormat, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE);
-        mAudioEncoder.start();
-        audioEncoderStopped = false;
+    }
+    
+    /**
+     * Call after display GLSurfaceView's onSurfaceCreated method called.
+     */
+    public void finishPreparingEncoders() {
+    	prepareCamera(VIDEO_WIDTH, VIDEO_HEIGHT, PREFERRED_CAMERA);
+    	saveRenderState();
+    	mInputSurface = new CodecInputSurface(mVideoEncoder.createInputSurface());
+		mVideoEncoder.start();
+		videoEncoderStopped = false;
+		//mInputSurface.makeEncodeContextCurrent();
+		prepareSurfaceTexture();
+		 
+		mAudioEncoder.start();
+		audioEncoderStopped = false;
+    }
+    
+    // Orthographic projection matrix.  Must be updated when the available screen area
+    // changes (e.g. when the device is rotated).
+    static final float mProjectionMatrix[] = new float[16];
+    
+    public void onDisplaySurfaceChanged(){
+    	 Matrix.orthoM(mProjectionMatrix, 0,  0, VIDEO_WIDTH,
+                 0, VIDEO_HEIGHT,  -1, 1);
     }
 
     private void stopAndReleaseVideoEncoder(){
@@ -877,7 +906,7 @@ public class HLSRecorder {
                     EGL14.EGL_CONTEXT_CLIENT_VERSION, 2,
                     EGL14.EGL_NONE
             };
-            //if(mEGLDisplayContext == EGL14.EGL_NO_CONTEXT) Log.e(TAG, "mEGLDisplayContext not set properly");
+            if(EGL14.eglGetCurrentContext() == EGL14.EGL_NO_CONTEXT) Log.e(TAG, "eglGetCurrentContext none on CodecInputSurface eglSetup");
             mEGLEncodeContext = EGL14.eglCreateContext(mEGLDisplay, configs[0], EGL14.eglGetCurrentContext(),
                     attrib_list, 0);
             checkEglError("eglCreateContext");
@@ -1065,6 +1094,36 @@ public class HLSRecorder {
                 mFrameSyncObject.notifyAll();
             }
         }
+    }
+    
+    // used by saveRenderState() / restoreRenderState()
+    private final float mSavedMatrix[] = new float[16];
+    private EGLDisplay mSavedEglDisplay;
+    private EGLSurface mSavedEglDrawSurface;
+    private EGLSurface mSavedEglReadSurface;
+    private EGLContext mSavedEglContext;
+        
+    /**
+     * Saves the current projection matrix and EGL state.
+     */
+    private void saveRenderState() {
+        //System.arraycopy(mProjectionMatrix, 0, mSavedMatrix, 0, mProjectionMatrix.length);
+        mSavedEglDisplay = EGL14.eglGetCurrentDisplay();
+        mSavedEglDrawSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW);
+        mSavedEglReadSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_READ);
+        mSavedEglContext = EGL14.eglGetCurrentContext();
+    }
+    
+    /**
+     * Saves the current projection matrix and EGL state.
+     */
+    private void restoreRenderState() {
+        // switch back to previous state
+        if (!EGL14.eglMakeCurrent(mSavedEglDisplay, mSavedEglDrawSurface, mSavedEglReadSurface,
+                mSavedEglContext)) {
+            throw new RuntimeException("eglMakeCurrent failed");
+        }
+        //System.arraycopy(mSavedMatrix, 0, mProjectionMatrix, 0, mProjectionMatrix.length);
     }
 
     /**

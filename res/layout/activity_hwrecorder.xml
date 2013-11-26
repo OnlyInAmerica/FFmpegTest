@@ -5,12 +5,12 @@
     android:animateLayoutChanges="true"
     tools:context=".MainActivity" >
 
-    <!--
+    
     <android.opengl.GLSurfaceView
         android:id="@+id/glSurfaceView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"/>
-    -->
+        android:layout_height="match_parent"
+        android:onClick="onRecordButtonClicked"/>
 
     <TextView
     android:id="@+id/liveLabel" 
@@ -24,7 +24,7 @@
     android:textSize="30sp"
     android:layout_width="110dp"
     android:layout_height="70dp"/>
-
+<!-- 
     <Button
         android:id="@+id/button1"
         android:layout_width="wrap_content"
@@ -34,5 +34,6 @@
         android:onClick="onRecordButtonClicked"
         android:padding="20dp"
         android:text="Start Recording" />
+         -->
 
 </RelativeLayout>

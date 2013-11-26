@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<android.opengl.GLSurfaceView 
+        xmlns:android="http://schemas.android.com/apk/res/android"
+        xmlns:tools="http://schemas.android.com/tools"
+        android:id="@+id/glSurfaceView"
+        android:layout_width="128dp"
+        android:layout_height="78dp"
+        android:layout_centerInParent="true" />

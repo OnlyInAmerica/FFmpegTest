@@ -17,6 +17,9 @@
 
 package com.example.ffmpegtest;
 
+import javax.microedition.khronos.egl.EGLConfig;
+import javax.microedition.khronos.opengles.GL10;
+
 import com.example.ffmpegtest.recorder.HLSRecorder;
 import com.example.ffmpegtest.recorder.LiveHLSRecorder;
 
@@ -26,6 +29,12 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Color;
+import android.opengl.EGL14;
+import android.opengl.EGLContext;
+import android.opengl.EGLDisplay;
+import android.opengl.EGLSurface;
+import android.opengl.GLES20;
+import android.opengl.GLSurfaceView;
 import android.os.Bundle;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
@@ -48,8 +57,8 @@ public class HWRecorderActivity extends Activity {
     TextView liveIndicator;
     String broadcastUrl;
 
-    //GLSurfaceView glSurfaceView;
-    //GlSurfaceViewRenderer glSurfaceViewRenderer = new GlSurfaceViewRenderer();
+    public static GLSurfaceView glSurfaceView;
+    GLSurfaceViewRenderer glSurfaceViewRenderer = new GLSurfaceViewRenderer();
     LayoutInflater inflater;
 
     protected void onCreate (Bundle savedInstanceState){
@@ -59,23 +68,27 @@ public class HWRecorderActivity extends Activity {
         setContentView(R.layout.activity_hwrecorder);
         inflater = (LayoutInflater) this.getSystemService(LAYOUT_INFLATER_SERVICE);
         liveIndicator = (TextView) findViewById(R.id.liveLabel);
-        //glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
-        //glSurfaceView.setRenderer(glSurfaceViewRenderer);
+        glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
+        glSurfaceView.setEGLContextClientVersion(2);
+        glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
+        glSurfaceView.setRenderer(glSurfaceViewRenderer);
         
         LocalBroadcastManager.getInstance(this).registerReceiver(mMessageReceiver,
         	      new IntentFilter(LiveHLSRecorder.INTENT_ACTION));
+        
+        liveRecorder = new LiveHLSRecorder(getApplicationContext());
     }
 
     @Override
     public void onPause(){
         super.onPause();
-        //glSurfaceView.onPause();
+        glSurfaceView.onPause();
     }
 
     @Override
     public void onResume(){
         super.onResume();
-        //glSurfaceView.onResume();
+        glSurfaceView.onResume();
     }
     
     @Override
@@ -86,19 +99,19 @@ public class HWRecorderActivity extends Activity {
     }
 
     public void onRecordButtonClicked(View v){
+
         if(!recording){
         	broadcastUrl = null;
         	
             try {
-                liveRecorder = new LiveHLSRecorder(getApplicationContext());
-                liveRecorder.startRecording(null);
-                ((Button) v).setText("Stop Recording");
+            	liveRecorder.startRecording(null);
+                //((Button) v).setText("Stop Recording");
             } catch (Throwable throwable) {
                 throwable.printStackTrace();
             }
         }else{
             liveRecorder.stopRecording();
-            ((Button) v).setText("Start Recording");
+            //((Button) v).setText("Start Recording");
         	liveIndicator.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_to_left));
         }
         recording = !recording;
@@ -127,32 +140,33 @@ public class HWRecorderActivity extends Activity {
         shareIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET);
         shareIntent.setType("text/plain");
         startActivity(Intent.createChooser(shareIntent, "Share Broadcast!"));
-    }  
-
-    /*
-    static EGLContext context;
-
-    public class GlSurfaceViewRenderer implements GLSurfaceView.Renderer{
+    } 
+    
+    public class GLSurfaceViewRenderer implements GLSurfaceView.Renderer{
 
         @Override
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
             Log.i(TAG, "GLSurfaceView created");
-            context = EGL14.eglGetCurrentContext();
-            if(context == EGL14.EGL_NO_CONTEXT)
-                Log.e(TAG, "failed to get valid EGLContext");
-
-           EGL14.eglMakeCurrent(EGL14.eglGetCurrentDisplay(), EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_CONTEXT);
+            GLES20.glDisable(GLES20.GL_DEPTH_TEST);
+            GLES20.glDisable(GLES20.GL_CULL_FACE);
+            liveRecorder.finishPreparingEncoders();
         }
 
         @Override
         public void onSurfaceChanged(GL10 gl, int width, int height) {
-
+        	gl.glViewport(0, 0, width, height);
+            // for a fixed camera, set the projection too
+            float ratio = (float) width / height;
+            gl.glMatrixMode(GL10.GL_PROJECTION);
+            gl.glLoadIdentity();
+            gl.glFrustumf(-ratio, ratio, -1, 1, 1, 10);
         }
 
         @Override
         public void onDrawFrame(GL10 gl) {
+        	Log.i("GLSurfaceView", "onDrawFrame");
         }
     }
-    */
+    
 
 }

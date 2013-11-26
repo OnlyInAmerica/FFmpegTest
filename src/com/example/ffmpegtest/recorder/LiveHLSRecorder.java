@@ -28,7 +28,7 @@ public class LiveHLSRecorder extends HLSRecorder{
 	private final String TAG = "LiveHLSRecorder";
 	private final boolean VERBOSE = false; 						// lots of logging
 	private final boolean TRACE = true;							// Enable systrace markers
-	private final boolean UPLOAD_TO_S3 = true;					// live uploading
+	private final boolean UPLOAD_TO_S3 = false;					// live uploading
 	
 	private Context c;
 	private String uuid;										// Recording UUID
@@ -64,10 +64,10 @@ public class LiveHLSRecorder extends HLSRecorder{
 	 */
 	@Override
 	public void startRecording(final String outputDir){
-		super.startRecording(outputDir);
 		temp = new File(getOutputDirectory(), "temp");	// make temp directory for .m3u8s for each upload state
 		temp.mkdirs();
 		sentIsLiveBroadcast = false;
+		super.startRecording(outputDir);
 		if (!UPLOAD_TO_S3) return;
         observer = new HLSFileObserver(getOutputDirectory().getAbsolutePath(), new HLSCallback(){
 
@@ -119,6 +119,7 @@ public class LiveHLSRecorder extends HLSRecorder{
         });
         observer.startWatching();
         Log.i(TAG, "Watching " + getOutputDirectory() + " for changes");
+        
 	}
 	
 	S3Callback segmentUploadedCallback = new S3Callback(){
