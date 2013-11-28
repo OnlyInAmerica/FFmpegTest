@@ -34,6 +34,7 @@ import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
+import android.view.View.OnClickListener;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.AnimationUtils;
@@ -45,6 +46,7 @@ public class HWRecorderActivity extends Activity {
     LiveHLSRecorder liveRecorder;
     
     TextView liveIndicator;
+    TextView instructions;
     String broadcastUrl;
 
     public static GLSurfaceView glSurfaceView;
@@ -53,13 +55,16 @@ public class HWRecorderActivity extends Activity {
 
     protected void onCreate (Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
+        Log.i(TAG, "onCreate");
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_hwrecorder);
         inflater = (LayoutInflater) this.getSystemService(LAYOUT_INFLATER_SERVICE);
         liveIndicator = (TextView) findViewById(R.id.liveLabel);
+        instructions = (TextView) findViewById(R.id.instructions);
         glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
         glSurfaceView.setEGLContextClientVersion(2);
+        glSurfaceView.setPreserveEGLContextOnPause(true);
         //glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
         glSurfaceView.setRenderer(glSurfaceViewRenderer);
         
@@ -67,18 +72,29 @@ public class HWRecorderActivity extends Activity {
         	      new IntentFilter(LiveHLSRecorder.INTENT_ACTION));
         
         liveRecorder = new LiveHLSRecorder(getApplicationContext());
+        liveRecorder.beginPreparingEncoders();
     }
 
     @Override
     public void onPause(){
         super.onPause();
         glSurfaceView.onPause();
+        if(recording){
+        	liveRecorder.recordingInterrupted = true;
+        }
+    }
+    
+    @Override
+    public void onStop(){
+        super.onStop();
+        Log.i(TAG, "onStop");
     }
 
     @Override
     public void onResume(){
         super.onResume();
         glSurfaceView.onResume();
+        Log.i(TAG, "onResume. Recording: " + recording);
     }
     
     @Override
@@ -86,20 +102,37 @@ public class HWRecorderActivity extends Activity {
       // Unregister since the activity is about to be closed.
       LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiver);
       super.onDestroy();
+      Log.i(TAG, "onDestroy");
+      // TODO: Stop encoder
     }
 
     public void onRecordButtonClicked(View v){
-
+    	
         if(!recording){
+        	instructions.setVisibility(View.GONE);
+        	glSurfaceView.setOnClickListener(new OnClickListener(){
+
+				@Override
+				public void onClick(View arg0) {
+					onRecordButtonClicked(arg0);
+				}
+        		
+        	});
         	broadcastUrl = null;
-        	
-            try {
-            	liveRecorder.startRecording(null);
-                //((Button) v).setText("Stop Recording");
-            } catch (Throwable throwable) {
-                throwable.printStackTrace();
-            }
+        	liveRecorder.beginPreparingEncoders();
+        	glSurfaceView.queueEvent(new Runnable(){
+
+				@Override
+				public void run() {
+					liveRecorder.finishPreparingEncoders();
+					liveRecorder.startRecording(null);
+				}
+        		
+        	});            	
+
         }else{
+        	instructions.setVisibility(View.VISIBLE);
+        	glSurfaceView.setOnClickListener(null);
             liveRecorder.stopRecording();
             glSurfaceView.queueEvent(new Runnable(){
 
@@ -109,7 +142,6 @@ public class HWRecorderActivity extends Activity {
 				}
             	
             });
-            //((Button) v).setText("Start Recording");
         	liveIndicator.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_to_left));
         }
         recording = !recording;
@@ -147,11 +179,11 @@ public class HWRecorderActivity extends Activity {
             Log.i(TAG, "GLSurfaceView created");
             GLES20.glDisable(GLES20.GL_DEPTH_TEST);
             GLES20.glDisable(GLES20.GL_CULL_FACE);
-            liveRecorder.finishPreparingEncoders();
         }
 
         @Override
         public void onSurfaceChanged(GL10 gl, int width, int height) {
+        	Log.i(TAG, "GLSurfaceView changed");
         	gl.glViewport(0, 0, width, height);
             // for a fixed camera, set the projection too
             float ratio = (float) width / height;
@@ -163,6 +195,7 @@ public class HWRecorderActivity extends Activity {
         @Override
         public void onDrawFrame(GL10 gl) {
         	if(recording){
+        		Log.i(TAG, "onDrawFrame");
         		liveRecorder.encodeVideoFrame();
         	}
         }

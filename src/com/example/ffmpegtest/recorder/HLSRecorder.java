@@ -75,6 +75,7 @@ public class HLSRecorder {
     long startTime;
     
     // Output
+    private Context c;										// For accessing external storage
     private static String mRootStorageDirName = "HLSRecorder";			// Root storage directory
     private String mUUID;
     private File mOutputDir;											// Folder containing recording files. /path/to/externalStorage/mOutputDir/<mUUID>/
@@ -125,15 +126,14 @@ public class HLSRecorder {
     boolean fullStopReceived = false;
     boolean videoEncoderStopped = false;			// these variables keep track of global recording state. They are not toggled during chunking
     boolean audioEncoderStopped = false;
-
+    public boolean recordingInterrupted = false;			// Did hosting activity go to background during recording. Used to mange EGL state
+    
     // Synchronization
     public Object sync = new Object();				// Synchronize access to muxer across Audio and Video encoding threads
 
     // FFmpegWrapper
     FFmpegWrapper ffmpeg = new FFmpegWrapper();		// Used to Mux encoded audio and video output from MediaCodec
     
-    Context c;										// For accessing external storage
-
     // Manage Track meta data to pass to Muxer
     class TrackInfo {
         int index = 0;
@@ -144,7 +144,7 @@ public class HLSRecorder {
     
     public HLSRecorder(Context c){
     	this.c = c;
-    	beginPreparingEncoders();
+    	//beginPreparingEncoders();
     }
     
     public String getUUID(){
@@ -260,12 +260,14 @@ public class HLSRecorder {
         if (!firstFrameReady) startTime = System.nanoTime();
         firstFrameReady = true;
         
-        if (TRACE) Trace.beginSection("makeDisplayContextCurrent");
-        restoreRenderState();
-        if (TRACE) Trace.endSection();
-        if (TRACE) Trace.beginSection("drawImageToDisplay");
-        mStManager.drawImage();
-        if (TRACE) Trace.endSection();
+        if(!recordingInterrupted){
+	        if (TRACE) Trace.beginSection("makeDisplayContextCurrent");
+	        restoreRenderState();
+	        if (TRACE) Trace.endSection();
+	        if (TRACE) Trace.beginSection("drawImageToDisplay");
+	        mStManager.drawImage();
+	        if (TRACE) Trace.endSection();
+        }
         
     }
 
@@ -494,7 +496,7 @@ public class HLSRecorder {
      * Configures encoder and muxer state, and prepares the input Surface.  Initializes
      * mVideoEncoder, mMuxerWrapper, mInputSurface, mVideoBufferInfo, mVideoTrackInfo, and mMuxerStarted.
      */
-    private void beginPreparingEncoders() {
+    public void beginPreparingEncoders() {
         fullStopReceived = false;
         mVideoBufferInfo = new MediaCodec.BufferInfo();
         mVideoTrackInfo = new TrackInfo();
@@ -545,6 +547,9 @@ public class HLSRecorder {
 		mVideoEncoder.start();
 		videoEncoderStopped = false;
 		//mInputSurface.makeEncodeContextCurrent();
+		// if no current EGL Context, make Display context current
+		if(EGL14.eglGetCurrentContext() == EGL14.EGL_NO_CONTEXT)
+			restoreRenderState();
 		prepareSurfaceTexture();
 		//startWhen = System.nanoTime();
 

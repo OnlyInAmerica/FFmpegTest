@@ -5,35 +5,39 @@
     android:animateLayoutChanges="true"
     tools:context=".MainActivity" >
 
-    
     <android.opengl.GLSurfaceView
         android:id="@+id/glSurfaceView"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:onClick="onRecordButtonClicked"/>
+        android:layout_height="match_parent" />
 
     <TextView
-    android:id="@+id/liveLabel" 
-    android:background="@drawable/live_bg"
-    android:textColor="#FFFFFF"
-    android:fontFamily="sans-serif-condensed"
-    android:textStyle="bold|italic"
-    android:text="LIVE"
-    android:visibility="gone"
-    android:gravity="center"
-    android:textSize="30sp"
-    android:layout_width="110dp"
-    android:layout_height="70dp"/>
-<!-- 
-    <Button
-        android:id="@+id/button1"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_centerInParent="true"
-        android:layout_marginTop="160dp"
+        android:id="@+id/liveLabel"
+        android:layout_width="110dp"
+        android:layout_height="70dp"
+        android:background="@drawable/live_bg"
+        android:fontFamily="sans-serif-condensed"
+        android:gravity="center"
+        android:text="LIVE"
+        android:textColor="#FFFFFF"
+        android:textSize="30sp"
+        android:textStyle="bold|italic"
+        android:visibility="gone" />
+
+    <TextView
+        android:id="@+id/instructions"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clickable="true"
+        android:fontFamily="sans-serif-condensed"
+        android:gravity="center"
         android:onClick="onRecordButtonClicked"
-        android:padding="20dp"
-        android:text="Start Recording" />
-         -->
+        android:shadowColor="#000000"
+        android:shadowDx="1"
+        android:shadowDy="1"
+        android:shadowRadius="2"
+        android:text="Touch Anywhere to Toggle Broadcasting"
+        android:textColor="#FFFFFF"
+        android:textSize="32sp"
+        android:textStyle="bold" />
 
 </RelativeLayout>
