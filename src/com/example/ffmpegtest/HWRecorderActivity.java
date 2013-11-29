@@ -81,6 +81,7 @@ public class HWRecorderActivity extends Activity {
         glSurfaceView.onPause();
         if(recording){
         	liveRecorder.recordingInterrupted = true;
+        	liveRecorder.encodeVideoFramesInBackground();
         }
     }
     
@@ -107,7 +108,7 @@ public class HWRecorderActivity extends Activity {
     }
 
     public void onRecordButtonClicked(View v){
-    	
+    	Log.i(TAG, "onRecordButtonClicked");
         if(!recording){
         	instructions.setVisibility(View.GONE);
         	glSurfaceView.setOnClickListener(new OnClickListener(){
@@ -179,6 +180,10 @@ public class HWRecorderActivity extends Activity {
             Log.i(TAG, "GLSurfaceView created");
             GLES20.glDisable(GLES20.GL_DEPTH_TEST);
             GLES20.glDisable(GLES20.GL_CULL_FACE);
+            
+            if(recording){
+            	liveRecorder.beginForegroundRecording();
+            }
         }
 
         @Override
@@ -194,8 +199,8 @@ public class HWRecorderActivity extends Activity {
 
         @Override
         public void onDrawFrame(GL10 gl) {
-        	if(recording){
-        		Log.i(TAG, "onDrawFrame");
+        	if(recording && !liveRecorder.recordingInterrupted){
+        		//Log.i(TAG, "onDrawFrame");
         		liveRecorder.encodeVideoFrame();
         	}
         }

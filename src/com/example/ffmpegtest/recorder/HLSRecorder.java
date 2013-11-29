@@ -199,6 +199,100 @@ public class HLSRecorder {
         setupAudioRecord();
         startAudioRecord();
     }
+    
+    private boolean recordInBackground = false;
+    
+    public void encodeVideoFramesInBackground(){
+    	Thread encodingThread = new Thread(new Runnable(){
+
+            @Override
+            public void run() {
+            	recordInBackground = true;
+            	_encodeVideoFramesInBackground();
+            }
+        }, TAG);
+        encodingThread.setPriority(Thread.MAX_PRIORITY);
+        encodingThread.start();
+    }
+    
+    /**
+     * Continue encoding video frames in a background-safe manner
+     * @param outputDir
+     */
+    private void _encodeVideoFramesInBackground(){
+        try {
+            // The video encoding loop:
+            while (!fullStopReceived && recordInBackground) {
+                synchronized (sync){
+                    if (TRACE) Trace.beginSection("drainVideo");
+                    drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, false);
+                    if (TRACE) Trace.endSection();
+                }
+
+                //videoFrameCount++;
+                totalFrameCount++;
+
+                // Acquire a new frame of input, and render it to the Surface.  If we had a
+                // GLSurfaceView we could switch EGL contexts and call drawImage() a second
+                // time to render it on screen.  The texture can be shared between contexts by
+                // passing the GLSurfaceView's EGLContext as eglCreateContext()'s share_context
+                // argument.
+                if (TRACE) Trace.beginSection("makeEncodeContextCurrent");
+                mInputSurface.makeEncodeContextCurrent();
+                if (TRACE) Trace.endSection();
+                if (TRACE) Trace.beginSection("awaitImage");
+                mStManager.awaitNewImage();
+                if (TRACE) Trace.endSection();
+                if (TRACE) Trace.beginSection("drawImageToEncoder");
+                mStManager.drawImage();
+                if (TRACE) Trace.endSection();
+                
+                // Set the presentation time stamp from the SurfaceTexture's time stamp.  This
+                // will be used by MediaMuxer to set the PTS in the video.
+                mInputSurface.setPresentationTime(st.getTimestamp() - startWhen);
+
+                // Submit it to the encoder.  The eglSwapBuffers call will block if the input
+                // is full, which would be bad if it stayed full until we dequeued an output
+                // buffer (which we can't do, since we're stuck here).  So long as we fully drain
+                // the encoder before supplying additional input, the system guarantees that we
+                // can supply another frame without blocking.
+                if (VERBOSE) Log.d(TAG, "sending frame to encoder");
+                if (TRACE) Trace.beginSection("swapBuffers");
+                mInputSurface.swapBuffers();
+                if (TRACE) Trace.endSection();
+                if (!firstFrameReady) startTime = System.nanoTime();
+                firstFrameReady = true;
+
+                /*
+                if(!recordingInterrupted){
+        	        if (TRACE) Trace.beginSection("makeDisplayContextCurrent");
+        	        restoreRenderState();
+        	        if (TRACE) Trace.endSection();
+        	        if (TRACE) Trace.beginSection("drawImageToDisplay");
+        	        mStManager.drawImage();
+        	        if (TRACE) Trace.endSection();
+                }
+                */
+
+            }
+            Log.i(TAG, "Exited video encode loop. Draining video encoder");
+            /*
+            synchronized(sync){
+                    drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, true);
+            }
+            */
+
+        } catch (Exception e){
+            Log.e(TAG, "Encoding loop exception!");
+            e.printStackTrace();
+        } finally {
+        	// if we just transitioned to foreground recording
+        	// reset EGL state appropriately 
+        	if(!fullStopReceived && !this.recordInBackground){
+        		_beginForegroundRecording();
+        	}
+        }
+    }
 
     
     /**
@@ -269,6 +363,18 @@ public class HLSRecorder {
 	        if (TRACE) Trace.endSection();
         }
         
+    }
+    
+    public void beginForegroundRecording(){
+    	recordInBackground = false;
+    	saveRenderState();
+    }
+        
+    public void _beginForegroundRecording(){
+    	Log.i(TAG, "foreground recording transition begin");
+    	mInputSurface.resetEglState();
+    	Log.i(TAG, "foreground recording transition done");
+    	recordingInterrupted = false;
     }
 
     public void stopRecording(){
@@ -484,11 +590,12 @@ public class HLSRecorder {
         }
     }
     
-    private void releaseInputSurface(){
+    private void releaseInputSurfaceAndTexture(){
     	if (mInputSurface != null) {
             mInputSurface.release();
             mInputSurface = null;
         }
+    	releaseSurfaceTexture();
     }
 
     /**
@@ -737,7 +844,7 @@ public class HLSRecorder {
                         if(encoder == mVideoEncoder){
                             stopAndReleaseVideoEncoder();
                             releaseCamera();
-                            releaseInputSurface();
+                            releaseInputSurfaceAndTexture();
                         } else if(encoder == mAudioEncoder){
                             stopAndReleaseAudioEncoder();
                         }
@@ -811,6 +918,12 @@ public class HLSRecorder {
             eglSetup();
         }
 
+        /**
+         * Update the EGL Context with a new Surface.
+         * Useful when swapping MediaCodec instances mid-stream
+         * eg. to change bitrate / resolution parameters
+         * @param newSurface generated via MediaCodec.createInputSurface()
+         */
         public void updateSurface(Surface newSurface){
             // Destroy old EglSurface
             EGL14.eglDestroySurface(mEGLDisplay, mEGLSurface);
@@ -820,6 +933,14 @@ public class HLSRecorder {
                     surfaceAttribs, 0);
             checkEglError("eglCreateWindowSurface");
             // eglMakeCurrent called in chunkRecording() after mVideoEncoder.start()
+        }
+        
+        public void resetEglState(){
+        	// We need to create a new encoding EGL Context & Surface when the
+        	// original display EGL context is lost, so the encoding EGL Context's shared_context 
+        	// paramter is again valid
+        	releaseAllButSurface();
+        	eglSetup(); // do we need to do more?
         }
 
         /**
@@ -888,6 +1009,20 @@ public class HLSRecorder {
 
             mSurface = null;
          }
+        
+        public void releaseAllButSurface(){
+        	if (mEGLDisplay != EGL14.EGL_NO_DISPLAY) {
+                EGL14.eglMakeCurrent(mEGLDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE,
+                        EGL14.EGL_NO_CONTEXT);
+                EGL14.eglDestroySurface(mEGLDisplay, mEGLSurface);
+                EGL14.eglDestroyContext(mEGLDisplay, mEGLEncodeContext);
+                EGL14.eglReleaseThread();
+                EGL14.eglTerminate(mEGLDisplay);
+            }
+            mEGLDisplay = EGL14.EGL_NO_DISPLAY;
+            mEGLEncodeContext = EGL14.EGL_NO_CONTEXT;
+            mEGLSurface = EGL14.EGL_NO_SURFACE;
+        }
 
         /* TODO: Display surface
         public void makeDisplayContextCurrent(){
