@@ -65,7 +65,7 @@ public class HWRecorderActivity extends Activity {
         glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
         glSurfaceView.setEGLContextClientVersion(2);
         glSurfaceView.setPreserveEGLContextOnPause(true);
-        //glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
+        glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
         glSurfaceView.setRenderer(glSurfaceViewRenderer);
         
         LocalBroadcastManager.getInstance(this).registerReceiver(mMessageReceiver,
@@ -78,9 +78,9 @@ public class HWRecorderActivity extends Activity {
     @Override
     public void onPause(){
         super.onPause();
+        Log.i(TAG, "onPause");
         glSurfaceView.onPause();
         if(recording){
-        	liveRecorder.recordingInterrupted = true;
         	liveRecorder.encodeVideoFramesInBackground();
         }
     }
@@ -110,7 +110,7 @@ public class HWRecorderActivity extends Activity {
     public void onRecordButtonClicked(View v){
     	Log.i(TAG, "onRecordButtonClicked");
         if(!recording){
-        	instructions.setVisibility(View.GONE);
+        	instructions.setVisibility(View.INVISIBLE);
         	glSurfaceView.setOnClickListener(new OnClickListener(){
 
 				@Override
@@ -161,6 +161,7 @@ public class HWRecorderActivity extends Activity {
     };
     
     public void onUrlLabelClick(View v){
+    	Log.i(TAG, "onUrlLabelClick");
     	if(broadcastUrl != null){
     		shareUrl(broadcastUrl);
     	}
@@ -173,17 +174,18 @@ public class HWRecorderActivity extends Activity {
         startActivity(Intent.createChooser(shareIntent, "Share Broadcast!"));
     } 
     
-    public class GLSurfaceViewRenderer implements GLSurfaceView.Renderer{
-    	
+    public class GLSurfaceViewRenderer implements GLSurfaceView.Renderer{    	
         @Override
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
             Log.i(TAG, "GLSurfaceView created");
             GLES20.glDisable(GLES20.GL_DEPTH_TEST);
             GLES20.glDisable(GLES20.GL_CULL_FACE);
             
+            /*
             if(recording){
             	liveRecorder.beginForegroundRecording();
             }
+            */
         }
 
         @Override
@@ -195,11 +197,17 @@ public class HWRecorderActivity extends Activity {
             gl.glMatrixMode(GL10.GL_PROJECTION);
             gl.glLoadIdentity();
             gl.glFrustumf(-ratio, ratio, -1, 1, 1, 10);
+            
+            if(recording){
+            	liveRecorder.saveEGLState();
+            	liveRecorder.beginForegroundRecording();
+            	Log.i(TAG, "beginForegroundRecording onSurfaceChanged");
+            }
         }
 
         @Override
         public void onDrawFrame(GL10 gl) {
-        	if(recording && !liveRecorder.recordingInterrupted){
+        	if(recording && !liveRecorder.recordingInBackground){        		
         		//Log.i(TAG, "onDrawFrame");
         		liveRecorder.encodeVideoFrame();
         	}

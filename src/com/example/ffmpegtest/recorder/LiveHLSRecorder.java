@@ -28,7 +28,7 @@ public class LiveHLSRecorder extends HLSRecorder{
 	private final String TAG = "LiveHLSRecorder";
 	private final boolean VERBOSE = false; 						// lots of logging
 	private final boolean TRACE = true;							// Enable systrace markers
-	private final boolean UPLOAD_TO_S3 = false;					// live uploading
+	private final boolean UPLOAD_TO_S3 = true;					// live uploading
 	
 	private Context c;
 	private String uuid;										// Recording UUID

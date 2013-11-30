@@ -58,6 +58,7 @@ import java.util.List;
 import java.util.UUID;
 
 import com.example.ffmpegtest.FileUtils;
+import com.example.ffmpegtest.HWRecorderActivity;
 import com.example.ffmpegtest.recorder.FFmpegWrapper.AVOptions;
 
 /**
@@ -126,7 +127,7 @@ public class HLSRecorder {
     boolean fullStopReceived = false;
     boolean videoEncoderStopped = false;			// these variables keep track of global recording state. They are not toggled during chunking
     boolean audioEncoderStopped = false;
-    public boolean recordingInterrupted = false;			// Did hosting activity go to background during recording. Used to mange EGL state
+    public boolean recordingInBackground = false;	// Is hosting activity in background. Used to mange EGL state
     
     // Synchronization
     public Object sync = new Object();				// Synchronize access to muxer across Audio and Video encoding threads
@@ -200,19 +201,29 @@ public class HLSRecorder {
         startAudioRecord();
     }
     
-    private boolean recordInBackground = false;
+    //private boolean recordInBackground = false;
     
     public void encodeVideoFramesInBackground(){
-    	Thread encodingThread = new Thread(new Runnable(){
+    	recordingInBackground = true; // Immediately halt rendering to glSurfaceView
+    	HWRecorderActivity.glSurfaceView.queueEvent(new Runnable(){
 
-            @Override
-            public void run() {
-            	recordInBackground = true;
-            	_encodeVideoFramesInBackground();
-            }
-        }, TAG);
-        encodingThread.setPriority(Thread.MAX_PRIORITY);
-        encodingThread.start();
+			@Override
+			public void run() {
+				clearEGLState();
+		    	Thread encodingThread = new Thread(new Runnable(){
+
+		            @Override
+		            public void run() {
+		            	Log.i(TAG, "Begin background recording");
+		            	_encodeVideoFramesInBackground();
+		            }
+		    	//});
+		    	}, TAG);
+		    	encodingThread.setPriority(Thread.MAX_PRIORITY);
+		        encodingThread.start();
+				
+			}
+    	});
     }
     
     /**
@@ -220,9 +231,11 @@ public class HLSRecorder {
      * @param outputDir
      */
     private void _encodeVideoFramesInBackground(){
+    	readyForForegroundRecording = false;
+    	//clearEGLState();	// Prevent EGL_BAD_ACCESS errors
         try {
             // The video encoding loop:
-            while (!fullStopReceived && recordInBackground) {
+            while (!fullStopReceived && recordingInBackground) {
                 synchronized (sync){
                     if (TRACE) Trace.beginSection("drainVideo");
                     drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, false);
@@ -275,7 +288,8 @@ public class HLSRecorder {
                 */
 
             }
-            Log.i(TAG, "Exited video encode loop. Draining video encoder");
+            clearEGLState();
+            Log.i(TAG, "Exited background video encode loop. Cleared EGL State");
             /*
             synchronized(sync){
                     drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, true);
@@ -288,18 +302,20 @@ public class HLSRecorder {
         } finally {
         	// if we just transitioned to foreground recording
         	// reset EGL state appropriately 
-        	if(!fullStopReceived && !this.recordInBackground){
+        	if(!fullStopReceived && !this.recordingInBackground){
         		_beginForegroundRecording();
         	}
+        	// TODO: If fullStopReceived --> finalize encoder
         }
     }
 
-    
     /**
      * To be called by GLSurfaceView's onDraw method,
      * from its rendering thread
      */
     public void encodeVideoFrame(){
+    	if(!readyForForegroundRecording || videoEncoderStopped) return;
+    	//Log.i(TAG, "encodeVideoFrame");
     	if(fullStopReceived){
     		synchronized (sync){
                 if (TRACE) Trace.beginSection("drainVideo");
@@ -354,9 +370,9 @@ public class HLSRecorder {
         if (!firstFrameReady) startTime = System.nanoTime();
         firstFrameReady = true;
         
-        if(!recordingInterrupted){
+        if(!recordingInBackground){
 	        if (TRACE) Trace.beginSection("makeDisplayContextCurrent");
-	        restoreRenderState();
+	        restoreEGLState();
 	        if (TRACE) Trace.endSection();
 	        if (TRACE) Trace.beginSection("drawImageToDisplay");
 	        mStManager.drawImage();
@@ -366,15 +382,17 @@ public class HLSRecorder {
     }
     
     public void beginForegroundRecording(){
-    	recordInBackground = false;
-    	saveRenderState();
+    	recordingInBackground = false;
+    	//saveRenderState();
     }
+    
+    boolean readyForForegroundRecording = true;
         
     public void _beginForegroundRecording(){
     	Log.i(TAG, "foreground recording transition begin");
-    	mInputSurface.resetEglState();
+    	//mInputSurface.resetEglState();
     	Log.i(TAG, "foreground recording transition done");
-    	recordingInterrupted = false;
+    	readyForForegroundRecording = true;
     }
 
     public void stopRecording(){
@@ -649,14 +667,14 @@ public class HLSRecorder {
      */
     public void finishPreparingEncoders() {
     	prepareCamera(VIDEO_WIDTH, VIDEO_HEIGHT, PREFERRED_CAMERA);
-    	saveRenderState();
+    	saveEGLState();
     	mInputSurface = new CodecInputSurface(mVideoEncoder.createInputSurface());
 		mVideoEncoder.start();
 		videoEncoderStopped = false;
 		//mInputSurface.makeEncodeContextCurrent();
 		// if no current EGL Context, make Display context current
 		if(EGL14.eglGetCurrentContext() == EGL14.EGL_NO_CONTEXT)
-			restoreRenderState();
+			restoreEGLState();
 		prepareSurfaceTexture();
 		//startWhen = System.nanoTime();
 
@@ -1191,7 +1209,7 @@ public class HLSRecorder {
     /**
      * Saves the current projection matrix and EGL state.
      */
-    private void saveRenderState() {
+    public void saveEGLState() {
         //System.arraycopy(mProjectionMatrix, 0, mSavedMatrix, 0, mProjectionMatrix.length);
         mSavedEglDisplay = EGL14.eglGetCurrentDisplay();
         mSavedEglDrawSurface = EGL14.eglGetCurrentSurface(EGL14.EGL_DRAW);
@@ -1199,10 +1217,17 @@ public class HLSRecorder {
         mSavedEglContext = EGL14.eglGetCurrentContext();
     }
     
+    private void clearEGLState(){
+    	if (!EGL14.eglMakeCurrent(mSavedEglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE,
+                EGL14.EGL_NO_CONTEXT)) {
+            throw new RuntimeException("eglMakeCurrent failed");
+        }
+    }
+    
     /**
      * Saves the current projection matrix and EGL state.
      */
-    private void restoreRenderState() {
+    private void restoreEGLState() {
         // switch back to previous state
         if (!EGL14.eglMakeCurrent(mSavedEglDisplay, mSavedEglDrawSurface, mSavedEglReadSurface,
                 mSavedEglContext)) {

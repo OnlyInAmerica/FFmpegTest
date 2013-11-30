@@ -18,10 +18,12 @@
         android:fontFamily="sans-serif-condensed"
         android:gravity="center"
         android:text="LIVE"
+        android:onClick="onUrlLabelClick"
+        android:clickable="true"
         android:textColor="#FFFFFF"
         android:textSize="30sp"
         android:textStyle="bold|italic"
-        android:visibility="gone" />
+        android:visibility="invisible" />
 
     <TextView
         android:id="@+id/instructions"
