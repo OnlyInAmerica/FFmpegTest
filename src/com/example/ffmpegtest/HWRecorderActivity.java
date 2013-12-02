@@ -171,6 +171,8 @@ public class HWRecorderActivity extends Activity {
         Intent shareIntent = new Intent(Intent.ACTION_SEND);
         shareIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET);
         shareIntent.setType("text/plain");
+        shareIntent.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.share_subject));
+        shareIntent.putExtra(Intent.EXTRA_TEXT, url.replace("%2F", "/"));	// TODO: Fix this in S3 library
         startActivity(Intent.createChooser(shareIntent, "Share Broadcast!"));
     } 
     
