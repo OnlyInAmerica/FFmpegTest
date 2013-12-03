@@ -8,6 +8,8 @@ import java.util.concurrent.Executors;
 
 import android.content.Context;
 import android.content.Intent;
+import android.opengl.GLSurfaceView;
+import android.os.Handler;
 import android.os.Trace;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
@@ -28,7 +30,7 @@ public class LiveHLSRecorder extends HLSRecorder{
 	private final String TAG = "LiveHLSRecorder";
 	private final boolean VERBOSE = false; 						// lots of logging
 	private final boolean TRACE = true;							// Enable systrace markers
-	private final boolean UPLOAD_TO_S3 = true;					// live uploading
+	private final boolean UPLOAD_TO_S3 = false;					// live uploading
 	
 	private Context c;
 	private String uuid;										// Recording UUID
@@ -46,8 +48,9 @@ public class LiveHLSRecorder extends HLSRecorder{
 	private final String S3_BUCKET = "openwatch-livestreamer";
 	private S3Client s3Client;
 	
-	public LiveHLSRecorder(Context c){
-		super(c);
+	public LiveHLSRecorder(Context c, GLSurfaceView glSurfaceView){
+		super(c, glSurfaceView);
+		if (!UPLOAD_TO_S3) return;
 		s3Client = new S3Client(c, SECRETS.AWS_KEY, SECRETS.AWS_SECRET);
 		s3Client.setBucket(S3_BUCKET);
 		uploadService = Executors.newSingleThreadExecutor();
@@ -120,6 +123,24 @@ public class LiveHLSRecorder extends HLSRecorder{
         observer.startWatching();
         Log.i(TAG, "Watching " + getOutputDirectory() + " for changes");
         
+	}
+	
+	@Override
+	public void stopRecording(){
+		super.stopRecording();
+		
+		if (!UPLOAD_TO_S3) return;
+		// Shutdown uploadService after a slight delay
+		// to ensure the final ts chunk is closed and
+		// submitted for upload by HLSFileObserver.onSegmentComplete
+		final Handler handler = new Handler();
+		handler.postDelayed(new Runnable() {
+		  @Override
+		  public void run() {
+			  Log.i(TAG, "Shutting down uploadService");
+			  uploadService.shutdown();
+		  }
+		}, 300);	// 300 ms
 	}
 	
 	S3Callback segmentUploadedCallback = new S3Callback(){

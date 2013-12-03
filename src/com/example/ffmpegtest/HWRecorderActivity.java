@@ -21,15 +21,19 @@ import javax.microedition.khronos.egl.EGLConfig;
 import javax.microedition.khronos.opengles.GL10;
 
 import com.example.ffmpegtest.recorder.LiveHLSRecorder;
+import com.example.ffmpegtest.recorder.RecordingService;
 
 import android.app.Activity;
 import android.content.BroadcastReceiver;
+import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.ServiceConnection;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
+import android.os.IBinder;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 import android.view.LayoutInflater;
@@ -39,11 +43,12 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.view.animation.AnimationUtils;
 import android.widget.TextView;
+import android.widget.Toast;
 
 public class HWRecorderActivity extends Activity {
     private static final String TAG = "HWRecorderActivity";
     boolean recording = false;
-    LiveHLSRecorder liveRecorder;
+    //LiveHLSRecorder liveRecorder;
     
     TextView liveIndicator;
     TextView instructions;
@@ -52,6 +57,10 @@ public class HWRecorderActivity extends Activity {
     public static GLSurfaceView glSurfaceView;
     GLSurfaceViewRenderer glSurfaceViewRenderer = new GLSurfaceViewRenderer();
     LayoutInflater inflater;
+    
+    // Service
+    private RecordingService mRecordingService;
+    private boolean mIsBound;
 
     protected void onCreate (Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
@@ -71,18 +80,23 @@ public class HWRecorderActivity extends Activity {
         LocalBroadcastManager.getInstance(this).registerReceiver(mMessageReceiver,
         	      new IntentFilter(LiveHLSRecorder.INTENT_ACTION));
         
-        liveRecorder = new LiveHLSRecorder(getApplicationContext());
-        liveRecorder.beginPreparingEncoders();
+        if(mRecordingService == null){
+            Intent intent = new Intent(this, RecordingService.class);
+            startService(intent);
+            Log.i(TAG, "called startService");
+        }
+        if(!mIsBound){
+        	doBindService();  	
+        }
     }
 
     @Override
     public void onPause(){
         super.onPause();
-        Log.i(TAG, "onPause");
-        glSurfaceView.onPause();
+        Log.i(TAG, "onPause. Recording: " + recording);
         if(recording){
-        	liveRecorder.encodeVideoFramesInBackground();
-        }
+        	mRecordingService.hlsRecorder.encodeVideoFramesInBackground();
+        }        
     }
     
     @Override
@@ -104,6 +118,7 @@ public class HWRecorderActivity extends Activity {
       LocalBroadcastManager.getInstance(this).unregisterReceiver(mMessageReceiver);
       super.onDestroy();
       Log.i(TAG, "onDestroy");
+      doUnbindService();
       // TODO: Stop encoder
     }
 
@@ -120,13 +135,13 @@ public class HWRecorderActivity extends Activity {
         		
         	});
         	broadcastUrl = null;
-        	liveRecorder.beginPreparingEncoders();
+        	//liveRecorder.beginPreparingEncoders();
         	glSurfaceView.queueEvent(new Runnable(){
 
 				@Override
 				public void run() {
-					liveRecorder.finishPreparingEncoders();
-					liveRecorder.startRecording(null);
+					mRecordingService.hlsRecorder.finishPreparingEncoders();
+					mRecordingService.hlsRecorder.startRecording(null);
 				}
         		
         	});            	
@@ -134,15 +149,7 @@ public class HWRecorderActivity extends Activity {
         }else{
         	instructions.setVisibility(View.VISIBLE);
         	glSurfaceView.setOnClickListener(null);
-            liveRecorder.stopRecording();
-            glSurfaceView.queueEvent(new Runnable(){
-
-				@Override
-				public void run() {
-					liveRecorder.encodeVideoFrame();
-				}
-            	
-            });
+        	mRecordingService.hlsRecorder.stopRecording();            
         	liveIndicator.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_to_left));
         }
         recording = !recording;
@@ -182,12 +189,6 @@ public class HWRecorderActivity extends Activity {
             Log.i(TAG, "GLSurfaceView created");
             GLES20.glDisable(GLES20.GL_DEPTH_TEST);
             GLES20.glDisable(GLES20.GL_CULL_FACE);
-            
-            /*
-            if(recording){
-            	liveRecorder.beginForegroundRecording();
-            }
-            */
         }
 
         @Override
@@ -201,18 +202,61 @@ public class HWRecorderActivity extends Activity {
             gl.glFrustumf(-ratio, ratio, -1, 1, 1, 10);
             
             if(recording){
-            	liveRecorder.saveEGLState();
-            	liveRecorder.beginForegroundRecording();
+            	mRecordingService.hlsRecorder.beginForegroundRecording();
             	Log.i(TAG, "beginForegroundRecording onSurfaceChanged");
             }
         }
 
         @Override
         public void onDrawFrame(GL10 gl) {
-        	if(recording && !liveRecorder.recordingInBackground){        		
+        	if(recording && !mRecordingService.hlsRecorder.recordingInBackground){        		
         		//Log.i(TAG, "onDrawFrame");
-        		liveRecorder.encodeVideoFrame();
+        		mRecordingService.hlsRecorder.encodeVideoFrame();
         	}
+        }
+    }
+    
+    
+    // Service
+    private ServiceConnection mConnection = new ServiceConnection() {
+        public void onServiceConnected(ComponentName className, IBinder service) {
+            // This is called when the connection with the service has been
+            // established, giving us the service object we can use to
+            // interact with the service.  Because we have bound to a explicit
+            // service that we know is running in our own process, we can
+            // cast its IBinder to a concrete class and directly access it.
+            mRecordingService = ((RecordingService.LocalBinder)service).getService();
+            mRecordingService.prepare(glSurfaceView);
+            // Tell the user about this for our demo.
+            Log.i(TAG, "Recording service connected");
+        }
+
+        public void onServiceDisconnected(ComponentName className) {
+            // This is called when the connection with the service has been
+            // unexpectedly disconnected -- that is, its process crashed.
+            // Because it is running in our same process, we should never
+            // see this happen.
+            mRecordingService = null;
+            Log.i(TAG, "Recording service disconnected");
+        }
+    };
+
+    void doBindService() {
+        // Establish a connection with the service.  We use an explicit
+        // class name because we want a specific service implementation that
+        // we know will be running in our own process (and thus won't be
+        // supporting component replacement by other applications).
+        bindService(new Intent(HWRecorderActivity.this, 
+                RecordingService.class), mConnection, Context.BIND_AUTO_CREATE);
+        mIsBound = true;
+    	Log.i(TAG, "called bindService");
+    }
+
+    void doUnbindService() {
+        if (mIsBound) {
+            // Detach our existing connection.
+            unbindService(mConnection);
+            mIsBound = false;
         }
     }
     

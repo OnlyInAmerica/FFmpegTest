@@ -23,7 +23,7 @@
         android:theme="@style/AppTheme"
         android:debuggable="true" >
         <activity
-            android:name="com.example.ffmpegtest.HWRecorderActivity"
+            android:name=".HWRecorderActivity"
             android:label="@string/app_name"
             android:screenOrientation="landscape" >
             <intent-filter>
@@ -32,5 +32,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <service
+		  android:name=".recorder.RecordingService"
+		  android:icon="@drawable/ic_launcher"
+		  android:label="@string/recording_service_name" />
     </application>
 </manifest>
