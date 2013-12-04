@@ -3,8 +3,6 @@ An attempt to feed encoded Audio and Video data from Android's MediaCodec to FFm
 
 Included is a build of the ffmpeg 2.0.2 libraries for arm linux with debugging symbols enabled, and no optimizations.
 
-**Note:** See Building instructions below.
-
 # Overview
 
 Camera frames and Microphone samples are queued into instances of Android's [MediaCodec](http://developer.android.com/reference/android/media/MediaCodec.html), which performs the encoding in hardware. We poll MediaCodec after submitting each audio / video  to dequeue encoded data and pass it to FFmpeg.
@@ -49,9 +47,28 @@ ffprobe reports:
 	    Stream #0:0[0x100]: Video: h264 (Baseline) ([27][0][0][0] / 0x001B), yuv420p, 640x480, 90k tbr, 90k tbn, 180k tbc
 	    Stream #0:1[0x101]: Audio: aac ([15][0][0][0] / 0x000F), 44100 Hz, mono, fltp, 137 kb/s
 
-     
 
 # Building
+
+To build, add a `SECRETS.java` file (see below) and import the project with Eclipse.
+
+## SECRETS.java
+
+Add a SECRETS.java file to the project with the following format:
+
+	package com.example.ffmpegtest;
+	
+	public class SECRETS {
+		
+		public static final String AWS_KEY = "YOUR_AWS_KEY";
+		public static final String AWS_SECRET = "YOUR_AWS_SECRET";
+	
+	}
+
+If you don't have these handy, simply assign arbitrary values and change `LiveHLSRecorder.UPLOAD_TO_S3` to `false`.
+     
+
+# Debugging Native Components
 
 In Eclipse with the [NDK plugin](http://tools.android.com/recent/usingthendkplugin).
 
@@ -67,21 +84,6 @@ Manually:
     $ cd ../  # The project root
     $ ndk-gdb
     
-    
-## SECRETS.java
-
-Add a SECRETS.java file to the project with the following format:
-
-	package com.example.ffmpegtest;
-	
-	public class SECRETS {
-		
-		public static final String AWS_KEY = "YOUR_AWS_KEY";
-		public static final String AWS_SECRET = "YOUR_AWS_SECRET";
-	
-	}
-
-If you don't have these handy, simply assign arbitrary values and change `LiveHLSRecorder.UPLOAD_TO_S3` to `false`.
 
 # License
 
