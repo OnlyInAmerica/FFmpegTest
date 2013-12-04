@@ -47,7 +47,6 @@ import android.widget.Toast;
 
 public class HWRecorderActivity extends Activity {
     private static final String TAG = "HWRecorderActivity";
-    boolean recording = false;
     //LiveHLSRecorder liveRecorder;
     
     TextView liveIndicator;
@@ -74,7 +73,7 @@ public class HWRecorderActivity extends Activity {
         glSurfaceView = (GLSurfaceView) findViewById(R.id.glSurfaceView);
         glSurfaceView.setEGLContextClientVersion(2);
         glSurfaceView.setPreserveEGLContextOnPause(true);
-        glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
+        //glSurfaceView.setDebugFlags(GLSurfaceView.DEBUG_CHECK_GL_ERROR | GLSurfaceView.DEBUG_LOG_GL_CALLS);
         glSurfaceView.setRenderer(glSurfaceViewRenderer);
         
         LocalBroadcastManager.getInstance(this).registerReceiver(mMessageReceiver,
@@ -93,8 +92,8 @@ public class HWRecorderActivity extends Activity {
     @Override
     public void onPause(){
         super.onPause();
-        Log.i(TAG, "onPause. Recording: " + recording);
-        if(recording){
+        Log.i(TAG, "onPause. Recording: " + (( mRecordingService == null || mRecordingService.hlsRecorder == null) ? false: mRecordingService.hlsRecorder.isRecording()) );
+        if((( mRecordingService == null || mRecordingService.hlsRecorder == null) ? false: mRecordingService.hlsRecorder.isRecording())){
         	mRecordingService.hlsRecorder.encodeVideoFramesInBackground();
         }        
     }
@@ -109,7 +108,7 @@ public class HWRecorderActivity extends Activity {
     public void onResume(){
         super.onResume();
         glSurfaceView.onResume();
-        Log.i(TAG, "onResume. Recording: " + recording);
+        Log.i(TAG, "onResume. Recording: " + ( (mRecordingService == null) ? false : mRecordingService.hlsRecorder.isRecording() ) );
     }
     
     @Override
@@ -124,7 +123,7 @@ public class HWRecorderActivity extends Activity {
 
     public void onRecordButtonClicked(View v){
     	Log.i(TAG, "onRecordButtonClicked");
-        if(!recording){
+        if(!mRecordingService.hlsRecorder.isRecording()){
         	instructions.setVisibility(View.INVISIBLE);
         	glSurfaceView.setOnClickListener(new OnClickListener(){
 
@@ -152,7 +151,6 @@ public class HWRecorderActivity extends Activity {
         	mRecordingService.hlsRecorder.stopRecording();            
         	liveIndicator.startAnimation(AnimationUtils.loadAnimation(this, R.anim.slide_to_left));
         }
-        recording = !recording;
     }
     
     private BroadcastReceiver mMessageReceiver = new BroadcastReceiver() {
@@ -193,15 +191,15 @@ public class HWRecorderActivity extends Activity {
 
         @Override
         public void onSurfaceChanged(GL10 gl, int width, int height) {
-        	Log.i(TAG, "GLSurfaceView changed");
+        	Log.i(TAG, "GLSurfaceView changed. HLSRecorder set : " + (mRecordingService != null && mRecordingService.hlsRecorder != null));
         	gl.glViewport(0, 0, width, height);
             // for a fixed camera, set the projection too
             float ratio = (float) width / height;
             gl.glMatrixMode(GL10.GL_PROJECTION);
             gl.glLoadIdentity();
             gl.glFrustumf(-ratio, ratio, -1, 1, 1, 10);
-            
-            if(recording){
+
+            if( (mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : mRecordingService.hlsRecorder.isRecording()){
             	mRecordingService.hlsRecorder.beginForegroundRecording();
             	Log.i(TAG, "beginForegroundRecording onSurfaceChanged");
             }
@@ -209,7 +207,7 @@ public class HWRecorderActivity extends Activity {
 
         @Override
         public void onDrawFrame(GL10 gl) {
-        	if(recording && !mRecordingService.hlsRecorder.recordingInBackground){        		
+        	if( ((mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : ( mRecordingService.hlsRecorder.isRecording() && !mRecordingService.hlsRecorder.recordingInBackground ) )){        		
         		//Log.i(TAG, "onDrawFrame");
         		mRecordingService.hlsRecorder.encodeVideoFrame();
         	}
@@ -226,7 +224,10 @@ public class HWRecorderActivity extends Activity {
             // service that we know is running in our own process, we can
             // cast its IBinder to a concrete class and directly access it.
             mRecordingService = ((RecordingService.LocalBinder)service).getService();
-            mRecordingService.prepare(glSurfaceView);
+            if( (mRecordingService.hlsRecorder == null) ? true : !mRecordingService.hlsRecorder.isRecording()){
+            	Log.i(TAG, "Preparing mRecordingService encoder with glSurfaceView");
+            	mRecordingService.prepare(glSurfaceView);		// creates and prepares HLSRecorder
+            }
             // Tell the user about this for our demo.
             Log.i(TAG, "Recording service connected");
         }

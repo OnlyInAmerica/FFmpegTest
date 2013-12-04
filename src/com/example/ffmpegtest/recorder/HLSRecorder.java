@@ -141,6 +141,7 @@ public class HLSRecorder {
     private SurfaceTextureManager mStManager;
 
     // Recording state
+    private boolean recording = false;						// Are we currently recording
     long startWhen;
     boolean fullStopReceived = false;
     boolean videoEncoderStopped = false;			// these variables keep track of global recording state. They are not toggled during chunking
@@ -174,6 +175,10 @@ public class HLSRecorder {
     	return mUUID;
     }
     
+    public boolean isRecording(){
+    	return recording;
+    }
+    
     public File getOutputDirectory(){
     	if(mOutputDir == null){
     		Log.w(TAG, "getOutputDirectory called in invalid state");
@@ -203,9 +208,9 @@ public class HLSRecorder {
     		throw new RuntimeException("mInputSurface is null on startRecording. Did you call finishPreparingEncoders?");
         if(outputDir != null)
             mRootStorageDirName = outputDir;
+        recording = true;
         mUUID = UUID.randomUUID().toString();
         mOutputDir = FileUtils.getStorageDirectory(FileUtils.getRootStorageDirectory(c, mRootStorageDirName), mUUID);
-        
         // TODO: Create Base HWRecorder class and subclass to provide output format, codecs etc
         mM3U8 = new File(mOutputDir, System.currentTimeMillis() + ".m3u8");
         
@@ -398,6 +403,7 @@ public class HLSRecorder {
     }
 
     public void stopRecording(){
+    	recording = false;
         Log.i(TAG, "stopRecording");
         fullStopReceived = true;
         double recordingDurationSec = (System.nanoTime() - startTime) / 1000000000.0;
