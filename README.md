@@ -3,6 +3,8 @@ An attempt to feed encoded Audio and Video data from Android's MediaCodec to FFm
 
 Included is a build of the ffmpeg 2.0.2 libraries for arm linux with debugging symbols enabled, and no optimizations.
 
+**Note:** See Building instructions below.
+
 # Overview
 
 Camera frames and Microphone samples are queued into instances of Android's [MediaCodec](http://developer.android.com/reference/android/media/MediaCodec.html), which performs the encoding in hardware. We poll MediaCodec after submitting each audio / video  to dequeue encoded data and pass it to FFmpeg.
@@ -64,7 +66,22 @@ Manually:
     # build and send the apk to device
     $ cd ../  # The project root
     $ ndk-gdb
+    
+    
+## SECRETS.java
 
+Add a SECRETS.java file to the project with the following format:
+
+	package com.example.ffmpegtest;
+	
+	public class SECRETS {
+		
+		public static final String AWS_KEY = "YOUR_AWS_KEY";
+		public static final String AWS_SECRET = "YOUR_AWS_SECRET";
+	
+	}
+
+If you don't have these handy, simply assign arbitrary values and change `LiveHLSRecorder.UPLOAD_TO_S3` to `false`.
 
 # License
 
