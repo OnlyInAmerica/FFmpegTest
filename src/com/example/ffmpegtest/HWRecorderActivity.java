@@ -277,6 +277,12 @@ public class HWRecorderActivity extends Activity {
             // Detach our existing connection.
             unbindService(mConnection);
             mIsBound = false;
+            
+            // If we're bound to service
+            // but not recording, safe to stop service now
+            if( (mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : !mRecordingService.hlsRecorder.isRecording()){
+            	stopService(new Intent(this, RecordingService.class));
+            }
         }
     }
     
