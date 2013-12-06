@@ -25,8 +25,7 @@
         <activity
             android:name=".HWRecorderActivity"
             android:label="@string/app_name"
-            android:screenOrientation="landscape"
-            android:configChanges="orientation|keyboardHidden|screenSize" > <!--  Prevents onCreate called when screen goes off. see http://stackoverflow.com/questions/3407192/problems-understanding-the-life-cycle-when-screen-goes-off-and-on -->
+            android:screenOrientation="landscape" > <!-- android:configChanges="orientation|keyboardHidden|screenSize" >  Prevents onCreate called when screen goes off, but turns out we cant recover EGL state without catchin' em. see http://stackoverflow.com/questions/3407192/problems-understanding-the-life-cycle-when-screen-goes-off-and-on -->
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

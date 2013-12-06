@@ -111,18 +111,18 @@ public class HLSRecorder {
     private MediaFormat mVideoFormat;
     private static final String VIDEO_MIME_TYPE = "video/avc";    		// H.264 Advanced Video Coding
     private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";    // AAC Low Overhead Audio Transport Multiplex
-    private static final int VIDEO_BIT_RATE		= 550000;				// Bits per second
+    private static final int VIDEO_BIT_RATE		= 1050000;				// Bits per second
     private static final int VIDEO_WIDTH 		= 1280;
     private static final int VIDEO_HEIGHT 		= 720;
     private static final int FRAME_RATE 		= 30;					// Frames per second.
-    private static final int IFRAME_INTERVAL 	= 3;           			// Seconds between I-frames
+    private static final int IFRAME_INTERVAL 	= 5;           			// Seconds between I-frames
     
     // Audio Encoder and Configuration
     private MediaCodec mAudioEncoder;
     private MediaCodec.BufferInfo mAudioBufferInfo;
     private TrackInfo mAudioTrackInfo;
     private MediaFormat mAudioFormat;									// Configured with the options below
-    private static final int AUDIO_BIT_RATE		= 96000;				// Bits per second
+    private static final int AUDIO_BIT_RATE		= 128000;				// Bits per second
     private static final int SAMPLE_RATE 		= 44100;				// Samples per second
     private static final int SAMPLES_PER_FRAME 	= 1024; 				// AAC frame size. Audio encoder input size is a multiple of this
     private static final int CHANNEL_CONFIG 	= AudioFormat.CHANNEL_IN_MONO;
@@ -227,13 +227,23 @@ public class HLSRecorder {
         setupAudioRecord();
         startAudioRecord();
     }
-        
+    
+    // TESTING: Block rapid-fire requests for bg or fg transition
+    long lastLegitBgRequestTime = System.nanoTime();
+    
     public void encodeVideoFramesInBackground(){
-    	recordingInBackground = true; // Immediately halt rendering to glSurfaceView
+    	Log.i(TAG, "encodeVideoFramesInBackground. recordingInBg: " + recordingInBackground + " interval: " + (System.nanoTime() - lastLegitBgRequestTime));
+    	if(recordingInBackground || (System.nanoTime() - lastLegitBgRequestTime < 500000000) ){
+    		Log.i(TAG, "Ignoring repeat request to encodeVideoFramesInBackground");
+    		return;
+    	}
+    	lastLegitBgRequestTime = System.nanoTime();
+    	//recordingInBackground = true; // Immediately halt rendering to glSurfaceView
     	glSurfaceView.queueEvent(new Runnable(){
 
 			@Override
 			public void run() {
+				recordingInBackground = true; // to prevent EGL_BAD_CONTEXT on swapbuffers
 				clearEGLState();
 		    	Thread encodingThread = new Thread(new Runnable(){
 
@@ -377,6 +387,7 @@ public class HLSRecorder {
         firstFrameReady = true;
         
         if(!recordingInBackground){
+        	//Log.i(TAG, "display frame");
 	        if (TRACE) Trace.beginSection("makeDisplayContextCurrent");
 	        restoreEGLState();
 	        if (TRACE) Trace.endSection();
@@ -388,18 +399,29 @@ public class HLSRecorder {
     }
     
     public void beginForegroundRecording(){
+    	Log.i(TAG, "beginForegroundRecording interval: " + (System.nanoTime() - lastLegitBgRequestTime));
+    											   //130661615
+    	if(System.nanoTime() - lastLegitBgRequestTime < 900000000 /* 900 MS */ ){
+    		Log.i(TAG, "ignoring repeat request to beginForegroundRecording");
+    		return;
+    	}
     	saveEGLState();
-    	recordingInBackground = false;
-    	//saveRenderState();
+    	// race condition possible?
+    	glSurfaceView.queueEvent(new Runnable(){
+
+			@Override
+			public void run() {
+		    	recordingInBackground = false;
+			}
+    		
+    	});
     }
     
     boolean readyForForegroundRecording = true;
         
     public void _beginForegroundRecording(){
-    	Log.i(TAG, "foreground recording transition begin");
-    	//mInputSurface.resetEglState();
-    	Log.i(TAG, "foreground recording transition done");
     	readyForForegroundRecording = true;
+    	Log.i(TAG, "readyForForegroundRecording set true");
     }
 
     public void stopRecording(){

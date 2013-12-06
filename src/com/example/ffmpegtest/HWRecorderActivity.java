@@ -33,6 +33,7 @@ import android.content.ServiceConnection;
 import android.opengl.GLES20;
 import android.opengl.GLSurfaceView;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
@@ -63,7 +64,7 @@ public class HWRecorderActivity extends Activity {
 
     protected void onCreate (Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
-        Log.i(TAG, "onCreate");
+        Log.i(TAG, "onCreate. changingConfigurations: " + this.getChangingConfigurations() + " callingActivity: " + ( (getCallingActivity() == null) ? "none" : this.getCallingActivity().toString()) );
         requestWindowFeature(Window.FEATURE_NO_TITLE);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         setContentView(R.layout.activity_hwrecorder);
@@ -88,22 +89,22 @@ public class HWRecorderActivity extends Activity {
         	doBindService();  	
         }
     }
-
+    
     @Override
     public void onPause(){
         super.onPause();
         Log.i(TAG, "onPause. Recording: " + (( mRecordingService == null || mRecordingService.hlsRecorder == null) ? false: mRecordingService.hlsRecorder.isRecording()) );
         if((( mRecordingService == null || mRecordingService.hlsRecorder == null) ? false: mRecordingService.hlsRecorder.isRecording())){
         	mRecordingService.hlsRecorder.encodeVideoFramesInBackground();
-        }        
+        }  
     }
     
     @Override
     public void onStop(){
         super.onStop();
-        Log.i(TAG, "onStop");
+        Log.i(TAG, "onStop. isChangiingConfigurations: " +  isChangingConfigurations());
     }
-
+    
     @Override
     public void onResume(){
         super.onResume();
@@ -191,7 +192,8 @@ public class HWRecorderActivity extends Activity {
 
         @Override
         public void onSurfaceChanged(GL10 gl, int width, int height) {
-        	Log.i(TAG, "GLSurfaceView changed. HLSRecorder set : " + (mRecordingService != null && mRecordingService.hlsRecorder != null));
+        	//Log.i(TAG, "GLSurfaceView changed. HLSRecorder set : " + (mRecordingService != null && mRecordingService.hlsRecorder != null));
+        	Log.i(TAG, "GLSurfaceView changed.");
         	gl.glViewport(0, 0, width, height);
             // for a fixed camera, set the projection too
             float ratio = (float) width / height;
@@ -199,9 +201,9 @@ public class HWRecorderActivity extends Activity {
             gl.glLoadIdentity();
             gl.glFrustumf(-ratio, ratio, -1, 1, 1, 10);
 
-            if( (mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : mRecordingService.hlsRecorder.isRecording()){
+            if( ((mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : mRecordingService.hlsRecorder.isRecording())){
+            	Log.i(TAG, "beginForegroundRecording onSurfaceChanged.");
             	mRecordingService.hlsRecorder.beginForegroundRecording();
-            	Log.i(TAG, "beginForegroundRecording onSurfaceChanged");
             }
         }
 

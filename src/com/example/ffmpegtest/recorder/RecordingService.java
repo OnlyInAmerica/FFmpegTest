@@ -61,16 +61,13 @@ public class RecordingService extends Service {
         Log.i(TAG, "Received start id " + startId + ": " + intent);
         // We want this service to continue running until it is explicitly
         // stopped, so return sticky.
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
-        // Cancel the persistent notification.
-        mNM.cancel(NOTIFICATION);
-
-        // Tell the user we stopped.
-        Toast.makeText(this, R.string.recording_service_stopped, Toast.LENGTH_SHORT).show();
+    	Log.i(TAG, "onDestroy");
+    	stopForeground(true);
     }
 
     @Override
@@ -103,7 +100,8 @@ public class RecordingService extends Service {
                        text, contentIntent);
 
         // Send the notification.
-        mNM.notify(NOTIFICATION, notification);
+        //mNM.notify(NOTIFICATION, notification);
+        startForeground(1337, notification);
     }
     
     /**
