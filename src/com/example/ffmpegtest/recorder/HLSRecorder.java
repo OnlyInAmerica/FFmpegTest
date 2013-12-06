@@ -85,7 +85,7 @@ public class HLSRecorder {
 	// Debugging
     private static final String TAG = "HLSRecorder";
     private static final boolean VERBOSE = false;           			// Lots of logging
-    private static final boolean TRACE = true; 							// Enable systrace markers
+    private static final boolean TRACE = false; 							// Enable systrace markers
     int totalFrameCount = 0;											// Used to calculate realized FPS
     long startTime;
     
@@ -146,6 +146,7 @@ public class HLSRecorder {
     boolean fullStopReceived = false;
     boolean videoEncoderStopped = false;			// these variables keep track of global recording state. They are not toggled during chunking
     boolean audioEncoderStopped = false;
+    boolean ffmpegMuxerStopped = false;
     public boolean recordingInBackground = false;	// Is hosting activity in background. Used to mange EGL state
     
     // Synchronization
@@ -221,6 +222,7 @@ public class HLSRecorder {
         opts.numAudioChannels 	= (CHANNEL_CONFIG == AudioFormat.CHANNEL_IN_STEREO) ? 2 : 1;
         ffmpeg.setAVOptions(opts);
         ffmpeg.prepareAVFormatContext(mM3U8.getAbsolutePath());
+        ffmpegMuxerStopped = false;
         
 		startWhen = System.nanoTime();
         
@@ -320,8 +322,12 @@ public class HLSRecorder {
         	// reset EGL state appropriately 
         	if(!fullStopReceived && !this.recordingInBackground){
         		_beginForegroundRecording();
+        	}else if(recordingInBackground && fullStopReceived){
+            	// Stop recorder in background state
+        		// This is probably happening due to incomplete 
+        		// recovery after screen off-on transition.
+        		drainEncoder(mVideoEncoder, mVideoBufferInfo, mVideoTrackInfo, true);
         	}
-        	// TODO: Allow stopping in background state?
         }
     }
 
@@ -432,7 +438,7 @@ public class HLSRecorder {
         double recordingDurationSec = (System.nanoTime() - startTime) / 1000000000.0;
         Log.i(TAG, "Recorded " + recordingDurationSec + " s. Expected " + (FRAME_RATE * recordingDurationSec) + " frames. Got " + totalFrameCount + " for " + (totalFrameCount / recordingDurationSec) + " fps");
         
-        if(videoEncoderStopped) return;
+        if(videoEncoderStopped || recordingInBackground) return;
         glSurfaceView.queueEvent(new Runnable(){
 
 			@Override
@@ -906,8 +912,9 @@ public class HLSRecorder {
                         } else if(encoder == mAudioEncoder){
                             stopAndReleaseAudioEncoder();
                         }
-                        if(videoEncoderStopped && audioEncoderStopped){
+                        if(videoEncoderStopped && audioEncoderStopped && !ffmpegMuxerStopped){
                         	ffmpeg.finalizeAVFormatContext();
+                        	ffmpegMuxerStopped = true;
                         	// HLS files are good to go. Safe to release resources and reset state
                         	if(cb != null) cb.HLSStreamComplete();
                         }

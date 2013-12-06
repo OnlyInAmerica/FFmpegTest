@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import android.content.Context;
 import android.content.Intent;
@@ -29,13 +30,14 @@ import com.readystatesoftware.simpl3r.Uploader.UploadProgressListener;
 public class LiveHLSRecorder extends HLSRecorder{
 	private final String TAG = "LiveHLSRecorder";
 	private final boolean VERBOSE = false; 						// lots of logging
-	private final boolean TRACE = true;							// Enable systrace markers
-	private final boolean UPLOAD_TO_S3 = false;					// live uploading
+	private final boolean TRACE = false;							// Enable systrace markers
+	private final boolean UPLOAD_TO_S3 = true;					// live uploading
 	
 	private Context c;
 	private String uuid;										// Recording UUID
 	private HLSFileObserver observer;							// Must hold reference to observer to continue receiving events
 	private ExecutorService uploadService;
+	private int uploadServiceQueueLength;
 	
 	public static final String INTENT_ACTION = "HLS";			// Intent action broadcast to LocalBroadcastManager
 	public enum HLS_STATUS { OFFLINE, LIVE };
@@ -48,12 +50,16 @@ public class LiveHLSRecorder extends HLSRecorder{
 	private final String S3_BUCKET = "openwatch-livestreamer";
 	private S3Client s3Client;
 	
+	// Callback
+    private HLSRecorderCallback cb;
+	
 	public LiveHLSRecorder(Context c, GLSurfaceView glSurfaceView){
 		super(c, glSurfaceView);
 		if (!UPLOAD_TO_S3) return;
 		s3Client = new S3Client(c, SECRETS.AWS_KEY, SECRETS.AWS_SECRET);
 		s3Client.setBucket(S3_BUCKET);
 		uploadService = Executors.newSingleThreadExecutor();
+		uploadServiceQueueLength = 0;
 		lastSegmentWritten = 0;
 		this.c = c;
 	}
@@ -85,8 +91,11 @@ public class LiveHLSRecorder extends HLSRecorder{
 						File orig = new File(path);
 						String url = s3Client.upload(getUUID() + File.separator + orig.getName(), orig, segmentUploadedCallback);
 						if (VERBOSE) Log.i(TAG, ".ts segment destination url received: " + url);
+						uploadServiceQueueLength--;
+						finishIfUploadServiceComplete();
 					}
 				});
+				uploadServiceQueueLength++;
 			}
 
 			@Override
@@ -110,13 +119,16 @@ public class LiveHLSRecorder extends HLSRecorder{
 						String url = s3Client.upload(getUUID() + File.separator + orig.getName(), copy, manifestUploadedCallback);
 						// TODO: Delete copy
 						if (VERBOSE) Log.i(TAG, ".m3u8 destination url received: " + url);
-						
+						uploadServiceQueueLength--;
+						finishIfUploadServiceComplete();
+							
 						if(!sentIsLiveBroadcast){
 							broadcastRecordingIsLive(url);
 							sentIsLiveBroadcast = true;
 						}
 					}
 				});
+				uploadServiceQueueLength++;
 			}
         	
         });
@@ -125,23 +137,21 @@ public class LiveHLSRecorder extends HLSRecorder{
         
 	}
 	
+	
+	@Override
+	public void setHLSRecorderCallback(HLSRecorderCallback cb){
+    	this.cb = cb;
+    }
+	
+	
 	@Override
 	public void stopRecording(){
 		super.stopRecording();
 		
 		if (!UPLOAD_TO_S3) return;
-		// Shutdown uploadService after a slight delay
-		// to ensure the final ts chunk is closed and
-		// submitted for upload by HLSFileObserver.onSegmentComplete
-		final Handler handler = new Handler();
-		handler.postDelayed(new Runnable() {
-		  @Override
-		  public void run() {
-			  Log.i(TAG, "Shutting down uploadService");
-			  uploadService.shutdown();
-		  }
-		}, 300);	// 300 ms
 	}
+	
+	
 	
 	S3Callback segmentUploadedCallback = new S3Callback(){
 
@@ -186,5 +196,14 @@ public class LiveHLSRecorder extends HLSRecorder{
 		  intent.putExtra("url", url);
 		  intent.putExtra("status", HLS_STATUS.LIVE);
 		  LocalBroadcastManager.getInstance(c).sendBroadcast(intent);
+	}
+
+	private void finishIfUploadServiceComplete(){
+		if(uploadServiceQueueLength == 0 && !isRecording()){
+			Log.i(TAG, "Shutting down upload service");
+			uploadService.shutdown();
+			if(cb != null)
+				cb.HLSStreamComplete();
+		}
 	}
 }

@@ -124,7 +124,9 @@ public class HWRecorderActivity extends Activity {
 
     public void onRecordButtonClicked(View v){
     	Log.i(TAG, "onRecordButtonClicked");
+    	boolean isRecording = false;
         if(!mRecordingService.hlsRecorder.isRecording()){
+        	isRecording = true;
         	broadcastUrl = null;
         	//liveRecorder.beginPreparingEncoders();
         	glSurfaceView.queueEvent(new Runnable(){
@@ -137,9 +139,10 @@ public class HWRecorderActivity extends Activity {
         		
         	});            	
         }else{
+        	isRecording = false;
         	mRecordingService.hlsRecorder.stopRecording();  
         }
-        updateUI(mRecordingService.hlsRecorder.isRecording());
+        updateUI(isRecording);
     }
     
     /**
