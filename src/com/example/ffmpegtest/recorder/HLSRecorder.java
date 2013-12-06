@@ -412,6 +412,7 @@ public class HLSRecorder {
 			@Override
 			public void run() {
 		    	recordingInBackground = false;
+		    	Log.i(TAG, "set recordingInBackground false");
 			}
     		
     	});
