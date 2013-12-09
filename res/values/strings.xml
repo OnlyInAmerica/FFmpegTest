@@ -7,7 +7,11 @@
 	<string name="share_subject">Watch this. I\'m Live.</string>
 	
 	<string name="recording_service_name">RecordingService</string>
-	<string name="recording_service_label">Recording Service</string>
-	<string name="recording_service_started">You\'re Live!</string>
-	<string name="recording_service_stopped">You\'re Off-Air</string>
+	<string name="recording_service_label">KickFlip</string>
+	<string name="recording_service_ready">Ready to broadcast</string>
+	<string name="recording_service_buffering">Buffering Stream... You\'ll be live in a tick.</string>
+	<string name="recording_service_live">You\'re Live!</string>
+	<string name="recording_service_syncing">Syncing broadcast</string>
+	<string name="recording_service_complete">Your broadcast is synced!</string>
+	<string name="recording_service_share">Share Broadcast!</string>
 </resources>

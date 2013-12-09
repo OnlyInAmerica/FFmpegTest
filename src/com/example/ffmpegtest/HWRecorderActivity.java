@@ -134,13 +134,13 @@ public class HWRecorderActivity extends Activity {
 				@Override
 				public void run() {
 					mRecordingService.hlsRecorder.finishPreparingEncoders();
-					mRecordingService.hlsRecorder.startRecording(null);
+					mRecordingService.startRecording(null);
 				}
         		
         	});            	
         }else{
         	isRecording = false;
-        	mRecordingService.hlsRecorder.stopRecording();  
+        	mRecordingService.stopRecording();  
         }
         updateUI(isRecording);
     }
@@ -187,18 +187,9 @@ public class HWRecorderActivity extends Activity {
     public void onUrlLabelClick(View v){
     	Log.i(TAG, "onUrlLabelClick");
     	if(broadcastUrl != null){
-    		shareUrl(broadcastUrl);
+    		startActivity(Util.createShareChooserIntentWithTitleAndUrl(getApplicationContext(), "Share Broadcast!", broadcastUrl));
     	}
     }
-    
-    private void shareUrl(String url) {
-        Intent shareIntent = new Intent(Intent.ACTION_SEND);
-        shareIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_WHEN_TASK_RESET);
-        shareIntent.setType("text/plain");
-        shareIntent.putExtra(Intent.EXTRA_SUBJECT, getString(R.string.share_subject));
-        shareIntent.putExtra(Intent.EXTRA_TEXT, url.replace("%2F", "/"));	// TODO: Fix this in S3 library
-        startActivity(Intent.createChooser(shareIntent, "Share Broadcast!"));
-    } 
     
     public class GLSurfaceViewRenderer implements GLSurfaceView.Renderer{    	
         @Override
