@@ -2,30 +2,22 @@ package com.example.ffmpegtest.recorder;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-
 import android.content.Context;
 import android.content.Intent;
 import android.opengl.GLSurfaceView;
-import android.os.Handler;
 import android.os.Trace;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
 
-import com.amazonaws.auth.BasicAWSCredentials;
-import com.amazonaws.services.s3.AmazonS3Client;
 import com.amazonaws.services.s3.model.ProgressEvent;
 import com.example.ffmpegtest.FileUtils;
 import com.example.ffmpegtest.HLSFileObserver;
 import com.example.ffmpegtest.HLSFileObserver.HLSCallback;
-import com.example.ffmpegtest.S3Client;
-import com.example.ffmpegtest.S3Client.S3Callback;
+import com.example.ffmpegtest.s3.S3Client;
+import com.example.ffmpegtest.s3.S3Client.S3Callback;
 import com.example.ffmpegtest.SECRETS;
-import com.readystatesoftware.simpl3r.Uploader;
-import com.readystatesoftware.simpl3r.Uploader.UploadProgressListener;
 
 public class LiveHLSRecorder extends HLSRecorder {
 	private final String TAG = "LiveHLSRecorder";
@@ -162,8 +154,12 @@ public class LiveHLSRecorder extends HLSRecorder {
 								finishIfUploadServiceComplete();
 
 								if (!sentIsLiveBroadcast) {
-									hlsUrl = url;
-									broadcastRecordingIsLive(url);
+									// Broadcast HTML link, instead of raw m3u8
+									//hlsUrl = url;
+									//broadcastRecordingIsLive(url);
+									hlsUrl = createAndUploadHTMLPlayer(url);
+									Log.i(TAG, "Made HTML from M3U8: " + hlsUrl);
+									broadcastRecordingIsLive(hlsUrl);
 									sentIsLiveBroadcast = true;
 								}
 							}
@@ -262,5 +258,11 @@ public class LiveHLSRecorder extends HLSRecorder {
 			if (cb != null)
 				cb.HLSStreamComplete();
 		}
+	}
+	
+	public String createAndUploadHTMLPlayer(String videoUrl){
+		File html = new File(getOutputDirectory(),"hls.html");
+		FileUtils.writeStringToFile(HLSHTMLWriter.generateHTMLWithVideoURL(videoUrl), html);
+		return s3Client.upload(getUUID() + File.separator + "hls.html", html, null);
 	}
 }

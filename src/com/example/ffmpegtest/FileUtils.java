@@ -25,10 +25,12 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
+import java.io.OutputStreamWriter;
 
 public class FileUtils {
 
@@ -157,6 +159,16 @@ public class FileUtils {
         }
         in.close();
         out.close();
+    }
+    
+    public static void writeStringToFile(String source, File dest){
+		try {
+			FileWriter writer = new FileWriter(dest);
+			writer.write(source);
+	    	writer.close();
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
     }
 
 }

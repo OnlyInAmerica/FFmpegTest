@@ -1,4 +1,4 @@
-package com.example.ffmpegtest;
+package com.example.ffmpegtest.s3;
 
 import java.io.File;
 
@@ -7,9 +7,10 @@ import android.util.Log;
 
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.services.s3.AmazonS3Client;
+import com.amazonaws.services.s3.model.CannedAccessControlList;
 import com.amazonaws.services.s3.model.ProgressEvent;
-import com.readystatesoftware.simpl3r.Uploader;
-import com.readystatesoftware.simpl3r.Uploader.UploadProgressListener;
+import com.amazonaws.services.s3.model.PutObjectRequest;
+import com.example.ffmpegtest.SECRETS;
 
 public class S3Client {
 	private static final String TAG = "S3Client";
@@ -49,16 +50,10 @@ public class S3Client {
 			Log.e(TAG, "Bucket not set! Call setBucket(String bucket)");
 			return "";
 		}
-		Uploader uploader = new Uploader(c, s3, bucket, key, source);
-		uploader.setProgressListener(new UploadProgressListener() {         
-		    @Override
-		    public void progressChanged(ProgressEvent progressEvent, 
-		            long bytesUploaded, int percentUploaded) {
-		    	if(callback != null)
-		    		callback.onProgress(progressEvent, bytesUploaded, percentUploaded);
-		    }
-		});
-		return uploader.start();		
+		PutObjectRequest por = new PutObjectRequest(bucket, key, source);
+		por.setCannedAcl(CannedAccessControlList.PublicRead);
+		s3.putObject(por);
+		return "http://" + bucket + ".s3.amazonaws.com/" + key; 
 	}
 
 

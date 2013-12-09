@@ -214,7 +214,7 @@ public class HLSRecorder {
         mUUID = UUID.randomUUID().toString();
         mOutputDir = FileUtils.getStorageDirectory(FileUtils.getRootStorageDirectory(c, mRootStorageDirName), mUUID);
         // TODO: Create Base HWRecorder class and subclass to provide output format, codecs etc
-        mM3U8 = new File(mOutputDir, System.currentTimeMillis() + ".m3u8");
+        mM3U8 = new File(mOutputDir, "hls.m3u8");
         
         AVOptions opts = new AVOptions();
         opts.videoHeight 		= VIDEO_HEIGHT;

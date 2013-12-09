@@ -14,13 +14,9 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.opengl.GLSurfaceView;
 import android.os.Binder;
-import android.os.Handler;
 import android.os.IBinder;
 import android.support.v4.content.LocalBroadcastManager;
 import android.util.Log;
-import android.view.View;
-import android.view.animation.AnimationUtils;
-import android.widget.Toast;
 
 /**
  * Service to wrap LiveHLSRecorder. By moving the 
@@ -95,7 +91,7 @@ public class RecordingService extends Service {
     private void makeForeground() {
         // The PendingIntent to launch if the user selects this notification
         PendingIntent pendingIntent = PendingIntent.getActivity(this, 0,
-                new Intent(this, HWRecorderActivity.class), 0);
+                new Intent(this, HWRecorderActivity.class), PendingIntent.FLAG_CANCEL_CURRENT);
         
         Notification.Builder builder = new Notification.Builder(getApplicationContext());
         builder.setContentTitle(getText(R.string.recording_service_label))
@@ -137,7 +133,7 @@ public class RecordingService extends Service {
     	hlsRecorder.startRecording(outputDir);
     	
     	PendingIntent pendingContentIntent = PendingIntent.getActivity(RecordingService.this, 0,
-	            new Intent(RecordingService.this, HWRecorderActivity.class), 0);
+	            new Intent(RecordingService.this, HWRecorderActivity.class), PendingIntent.FLAG_CANCEL_CURRENT);
     
 	    Notification.Builder builder = new Notification.Builder(getApplicationContext());
 	    builder.setContentTitle(getText(R.string.recording_service_label))
@@ -154,10 +150,10 @@ public class RecordingService extends Service {
     	hlsRecorder.stopRecording();
     	
     	PendingIntent pendingContentIntent = PendingIntent.getActivity(RecordingService.this, 0,
-	            new Intent(RecordingService.this, HWRecorderActivity.class), 0);
+	            new Intent(RecordingService.this, HWRecorderActivity.class), PendingIntent.FLAG_CANCEL_CURRENT);
     	
     	PendingIntent pendingShareIntent = PendingIntent.getActivity(RecordingService.this, 0,
-        		Util.createShareChooserIntentWithTitleAndUrl(getApplicationContext(), getString(R.string.recording_service_share), hlsRecorder.getHLSUrl()), 0);
+        		Util.createShareChooserIntentWithTitleAndUrl(getApplicationContext(), getString(R.string.recording_service_share), hlsRecorder.getHLSUrl()), PendingIntent.FLAG_CANCEL_CURRENT);
     
 	    Notification.Builder builder = new Notification.Builder(getApplicationContext());
 	    builder.setContentTitle(getText(R.string.recording_service_label))
@@ -166,6 +162,7 @@ public class RecordingService extends Service {
 	    	   .setContentText(getText(R.string.recording_service_syncing))
 	    	   .addAction(R.drawable.ic_action_share, getText(R.string.recording_service_share), pendingShareIntent);
 	    mNM.notify(NOTIFICATION_ID, builder.build());
+	    Log.i(TAG, "Notifying HLS link: " + hlsRecorder.getHLSUrl());
     }
     
     /**
@@ -178,10 +175,10 @@ public class RecordingService extends Service {
 	        String broadcastUrl = intent.getStringExtra("url");
 
 			PendingIntent pendingContentIntent = PendingIntent.getActivity(RecordingService.this, 0,
-			            new Intent(RecordingService.this, HWRecorderActivity.class), 0);
+			            new Intent(RecordingService.this, HWRecorderActivity.class), PendingIntent.FLAG_CANCEL_CURRENT);
 	        
 	        PendingIntent pendingShareIntent = PendingIntent.getActivity(RecordingService.this, 0,
-	        		Util.createShareChooserIntentWithTitleAndUrl(getApplicationContext(), getString(R.string.recording_service_share), broadcastUrl), 0);
+	        		Util.createShareChooserIntentWithTitleAndUrl(getApplicationContext(), getString(R.string.recording_service_share), broadcastUrl), PendingIntent.FLAG_CANCEL_CURRENT);
  
 	        Notification.Builder builder = new Notification.Builder(getApplicationContext());
 	        builder.setContentTitle(getText(R.string.recording_service_label))
@@ -195,6 +192,7 @@ public class RecordingService extends Service {
 			builder.setContentText(getText(R.string.recording_service_complete));
   		}
 		mNM.notify(NOTIFICATION_ID, builder.build());
+		Log.i(TAG, "Notifying HLS link: " + broadcastUrl);
   	  }
   };
     
