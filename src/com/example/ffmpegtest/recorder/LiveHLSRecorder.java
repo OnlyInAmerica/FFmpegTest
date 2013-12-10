@@ -157,7 +157,9 @@ public class LiveHLSRecorder extends HLSRecorder {
 									// Broadcast HTML link, instead of raw m3u8
 									//hlsUrl = url;
 									//broadcastRecordingIsLive(url);
-									hlsUrl = createAndUploadHTMLPlayer(url);
+									
+									//hlsUrl = createAndUploadHTMLPlayer(url);
+									hlsUrl = "http://kickflip.io/video.html?v=" + getUUID();
 									Log.i(TAG, "Made HTML from M3U8: " + hlsUrl);
 									broadcastRecordingIsLive(hlsUrl);
 									sentIsLiveBroadcast = true;

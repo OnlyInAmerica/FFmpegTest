@@ -112,7 +112,7 @@ public class HLSRecorder {
     private MediaFormat mVideoFormat;
     private static final String VIDEO_MIME_TYPE = "video/avc";    		// H.264 Advanced Video Coding
     private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";    // AAC Low Overhead Audio Transport Multiplex
-    private static final int VIDEO_BIT_RATE		= 550000;				// Bits per second
+    private static final int VIDEO_BIT_RATE		= 1200000;				// Bits per second
     private static final int VIDEO_WIDTH 		= 1280;
     private static final int VIDEO_HEIGHT 		= 720;
     private static final int FRAME_RATE 		= 30;					// Frames per second.
@@ -123,7 +123,7 @@ public class HLSRecorder {
     private MediaCodec.BufferInfo mAudioBufferInfo;
     private TrackInfo mAudioTrackInfo;
     private MediaFormat mAudioFormat;									// Configured with the options below
-    private static final int AUDIO_BIT_RATE		= 64000;				// Bits per second
+    private static final int AUDIO_BIT_RATE		= 96000;				// Bits per second
     private static final int SAMPLE_RATE 		= 44100;				// Samples per second
     private static final int SAMPLES_PER_FRAME 	= 1024; 				// AAC frame size. Audio encoder input size is a multiple of this
     private static final int CHANNEL_CONFIG 	= AudioFormat.CHANNEL_IN_MONO;
