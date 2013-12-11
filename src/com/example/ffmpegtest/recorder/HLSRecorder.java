@@ -1358,6 +1358,7 @@ public class HLSRecorder {
             checkGlError("glUseProgram");
 
             GLES20.glActiveTexture(GLES20.GL_TEXTURE0);
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, mTextureID);
 
             mTriangleVertices.position(TRIANGLE_VERTICES_DATA_POS_OFFSET);
@@ -1418,6 +1419,7 @@ public class HLSRecorder {
             GLES20.glGenTextures(1, textures, 0);
 
             mTextureID = textures[0];
+            GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, 0);
             GLES20.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, mTextureID);
             checkGlError("glBindTexture mTextureID");
 

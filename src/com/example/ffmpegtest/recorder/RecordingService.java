@@ -149,18 +149,20 @@ public class RecordingService extends Service {
     public void stopRecording(){
     	hlsRecorder.stopRecording();
     	
+	    Notification.Builder builder = new Notification.Builder(getApplicationContext());
+    	
     	PendingIntent pendingContentIntent = PendingIntent.getActivity(RecordingService.this, 0,
 	            new Intent(RecordingService.this, HWRecorderActivity.class), PendingIntent.FLAG_CANCEL_CURRENT);
     	
-    	PendingIntent pendingShareIntent = PendingIntent.getActivity(RecordingService.this, 0,
+    	if(hlsRecorder.getHLSUrl() != null){
+    		PendingIntent pendingShareIntent = PendingIntent.getActivity(RecordingService.this, 0,
         		Util.createShareChooserIntentWithTitleAndUrl(getApplicationContext(), getString(R.string.recording_service_share), hlsRecorder.getHLSUrl()), PendingIntent.FLAG_CANCEL_CURRENT);
-    
-	    Notification.Builder builder = new Notification.Builder(getApplicationContext());
+    		builder.addAction(R.drawable.ic_action_share, getText(R.string.recording_service_share), pendingShareIntent);
+    	}
 	    builder.setContentTitle(getText(R.string.recording_service_label))
 	    	   .setSmallIcon(R.drawable.ic_stat_skate)
 	    	   .setContentIntent(pendingContentIntent)
-	    	   .setContentText(getText(R.string.recording_service_syncing))
-	    	   .addAction(R.drawable.ic_action_share, getText(R.string.recording_service_share), pendingShareIntent);
+	    	   .setContentText(getText(R.string.recording_service_syncing));  	   
 	    mNM.notify(NOTIFICATION_ID, builder.build());
 	    Log.i(TAG, "Notifying HLS link: " + hlsRecorder.getHLSUrl());
     }
