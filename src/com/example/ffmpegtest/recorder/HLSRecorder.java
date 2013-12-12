@@ -102,6 +102,7 @@ public class HLSRecorder {
     private String mUUID;
     private File mOutputDir;											// Folder containing recording files. /path/to/externalStorage/mOutputDir/<mUUID>/
     private File mM3U8;													// .m3u8 playlist file
+    private static final int HLS_SEGMENT_DURATION = 10;					// Seconds
     
     // Video Encoder
     private static final int PREFERRED_CAMERA = Camera.CameraInfo.CAMERA_FACING_BACK;
@@ -112,7 +113,7 @@ public class HLSRecorder {
     private MediaFormat mVideoFormat;
     private static final String VIDEO_MIME_TYPE = "video/avc";    		// H.264 Advanced Video Coding
     private static final String AUDIO_MIME_TYPE = "audio/mp4a-latm";    // AAC Low Overhead Audio Transport Multiplex
-    private static final int VIDEO_BIT_RATE		= 1200000;				// Bits per second
+    private static final int VIDEO_BIT_RATE		= 500000;				// Bits per second
     private static final int VIDEO_WIDTH 		= 1280;
     private static final int VIDEO_HEIGHT 		= 720;
     private static final int FRAME_RATE 		= 30;					// Frames per second.
@@ -217,10 +218,11 @@ public class HLSRecorder {
         mM3U8 = new File(mOutputDir, "hls.m3u8");
         
         AVOptions opts = new AVOptions();
-        opts.videoHeight 		= VIDEO_HEIGHT;
-        opts.videoWidth 		= VIDEO_WIDTH;
-        opts.audioSampleRate 	= SAMPLE_RATE;
-        opts.numAudioChannels 	= (CHANNEL_CONFIG == AudioFormat.CHANNEL_IN_STEREO) ? 2 : 1;
+        opts.hlsSegmentDurationSec 	= HLS_SEGMENT_DURATION;
+        opts.videoHeight 			= VIDEO_HEIGHT;
+        opts.videoWidth 			= VIDEO_WIDTH;
+        opts.audioSampleRate 		= SAMPLE_RATE;
+        opts.numAudioChannels 		= (CHANNEL_CONFIG == AudioFormat.CHANNEL_IN_STEREO) ? 2 : 1;
         ffmpeg.setAVOptions(opts);
         ffmpeg.prepareAVFormatContext(mM3U8.getAbsolutePath());
         ffmpegMuxerStopped = false;
@@ -230,17 +232,11 @@ public class HLSRecorder {
         setupAudioRecord();
         startAudioRecord();
     }
-    
-    // TESTING: Block rapid-fire requests for bg or fg transition
-    long lastLegitBgRequestTime = System.nanoTime();
-    
+
+
     public void encodeVideoFramesInBackground(){
-    	Log.i(TAG, "encodeVideoFramesInBackground. recordingInBg: " + recordingInBackground + " interval: " + (System.nanoTime() - lastLegitBgRequestTime));
-    	if(recordingInBackground || (System.nanoTime() - lastLegitBgRequestTime < 500000000) ){
-    		Log.i(TAG, "Ignoring repeat request to encodeVideoFramesInBackground");
-    		return;
-    	}
-    	lastLegitBgRequestTime = System.nanoTime();
+    	Log.i(TAG, "encodeVideoFramesInBackground. recordingInBg: " + recordingInBackground);
+    	
     	//recordingInBackground = true; // Immediately halt rendering to glSurfaceView
     	glSurfaceView.queueEvent(new Runnable(){
 
@@ -337,6 +333,7 @@ public class HLSRecorder {
      * from its rendering thread
      */
     public void encodeVideoFrame(){
+    	//Log.i(TAG, "encodeVideoFrame");
     	if(!readyForForegroundRecording || videoEncoderStopped) return;
     	//Log.i(TAG, "encodeVideoFrame");
     	if(fullStopReceived){
@@ -405,15 +402,14 @@ public class HLSRecorder {
         
     }
     
-    public void beginForegroundRecording(){
-    	Log.i(TAG, "beginForegroundRecording interval: " + (System.nanoTime() - lastLegitBgRequestTime));
-    											   //130661615
-    	if(System.nanoTime() - lastLegitBgRequestTime < 900000000 /* 900 MS */ ){
-    		Log.i(TAG, "ignoring repeat request to beginForegroundRecording");
-    		return;
-    	}
+    public void beginForegroundRecording(boolean newDisplaySurface){
+    	if(newDisplaySurface) return; // TODO: Recreate CodecInputSurface EGLSurface with new GLSurfaceView EGLContext as shared_context 
     	saveEGLState();
+    	recordingInBackground = false;
+    	Log.i(TAG, "beginForegroundRecording recordingInBackground false");
     	// race condition possible?
+    	/* This shouldn't be necessary, call comes from renderer thread...
+    	 * I disabled this segment then witnessed onPause called AGAIN during screen OFF
     	glSurfaceView.queueEvent(new Runnable(){
 
 			@Override
@@ -423,6 +419,7 @@ public class HLSRecorder {
 			}
     		
     	});
+    	*/
     }
     
     boolean readyForForegroundRecording = true;
@@ -715,6 +712,9 @@ public class HLSRecorder {
     public void finishPreparingEncoders() {
     	prepareCamera(VIDEO_WIDTH, VIDEO_HEIGHT, PREFERRED_CAMERA);
     	saveEGLState();
+    	if(mVideoEncoder == null){
+    		beginPreparingEncoders();
+    	}
     	mInputSurface = new CodecInputSurface(mVideoEncoder.createInputSurface());
 		mVideoEncoder.start();
 		videoEncoderStopped = false;
@@ -1273,7 +1273,7 @@ public class HLSRecorder {
     }
     
     private void clearEGLState(){
-    	if (!EGL14.eglMakeCurrent(mSavedEglDisplay, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE,
+    	if (!EGL14.eglMakeCurrent(mSavedEglDisplay /* EGL14.eglGetCurrentDisplay()*/, EGL14.EGL_NO_SURFACE, EGL14.EGL_NO_SURFACE,
                 EGL14.EGL_NO_CONTEXT)) {
             throw new RuntimeException("eglMakeCurrent failed");
         }

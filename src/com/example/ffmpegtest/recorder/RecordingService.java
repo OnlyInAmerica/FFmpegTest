@@ -173,7 +173,16 @@ public class RecordingService extends Service {
      */
     private BroadcastReceiver mMessageReceiver = new BroadcastReceiver() {
   	  @Override
-  	  public void onReceive(Context context, Intent intent) {  		  
+  	  public void onReceive(Context context, Intent intent) {
+	        Notification.Builder builder = new Notification.Builder(getApplicationContext());
+	        
+	        if (LiveHLSRecorder.HLS_STATUS.LIVE ==  (LiveHLSRecorder.HLS_STATUS) intent.getSerializableExtra("status")){
+	        	if(!hlsRecorder.isRecording()) return;
+			  	builder.setContentText(getText(R.string.recording_service_live));  	   
+			}  else if (LiveHLSRecorder.HLS_STATUS.COMPLETE ==  (LiveHLSRecorder.HLS_STATUS) intent.getSerializableExtra("status")){
+				builder.setContentText(getText(R.string.recording_service_complete));
+			}
+
 	        String broadcastUrl = intent.getStringExtra("url");
 
 			PendingIntent pendingContentIntent = PendingIntent.getActivity(RecordingService.this, 0,
@@ -182,19 +191,13 @@ public class RecordingService extends Service {
 	        PendingIntent pendingShareIntent = PendingIntent.getActivity(RecordingService.this, 0,
 	        		Util.createShareChooserIntentWithTitleAndUrl(getApplicationContext(), getString(R.string.recording_service_share), broadcastUrl), PendingIntent.FLAG_CANCEL_CURRENT);
  
-	        Notification.Builder builder = new Notification.Builder(getApplicationContext());
 	        builder.setContentTitle(getText(R.string.recording_service_label))
 	        	   .setSmallIcon(R.drawable.ic_stat_skate)
 	        	   .setContentIntent(pendingContentIntent)
 	        	   .addAction(R.drawable.ic_action_share, getText(R.string.recording_service_share), pendingShareIntent);
 	        	   
-  		if (LiveHLSRecorder.HLS_STATUS.LIVE ==  (LiveHLSRecorder.HLS_STATUS) intent.getSerializableExtra("status")){
-			  	   builder.setContentText(getText(R.string.recording_service_live));  	   
-  		}  else if (LiveHLSRecorder.HLS_STATUS.COMPLETE ==  (LiveHLSRecorder.HLS_STATUS) intent.getSerializableExtra("status")){
-			builder.setContentText(getText(R.string.recording_service_complete));
-  		}
-		mNM.notify(NOTIFICATION_ID, builder.build());
-		Log.i(TAG, "Notifying HLS link: " + broadcastUrl);
+	        mNM.notify(NOTIFICATION_ID, builder.build());
+	        Log.i(TAG, "Notifying HLS link: " + broadcastUrl);
   	  }
   };
     

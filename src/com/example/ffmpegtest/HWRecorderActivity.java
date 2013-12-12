@@ -90,13 +90,18 @@ public class HWRecorderActivity extends Activity {
         }
     }
     
+    boolean isPaused = false;
+    
     @Override
     public void onPause(){
         super.onPause();
         Log.i(TAG, "onPause");
         if((( mRecordingService == null || mRecordingService.hlsRecorder == null) ? false: mRecordingService.hlsRecorder.isRecording())){
         	mRecordingService.hlsRecorder.encodeVideoFramesInBackground();
-        }  
+        }else{
+        	glSurfaceView.onPause();
+        }
+        isPaused = true;
     }
     
     @Override
@@ -110,6 +115,7 @@ public class HWRecorderActivity extends Activity {
         super.onResume();
         glSurfaceView.onResume();
         Log.i(TAG, "onResume");
+        isPaused = false;
     }
     
     @Override
@@ -139,7 +145,6 @@ public class HWRecorderActivity extends Activity {
         		
         	});            	
         }else{
-        	isRecording = false;
         	mRecordingService.stopRecording();  
         }
         updateUI(isRecording);
@@ -165,6 +170,9 @@ public class HWRecorderActivity extends Activity {
         	});
     	}else{
     		// Show instructions, remove glSurfaceView click listener, slide out LIVE badge if visible
+    		// NOTE: It seems when GLSurfaceView is re-created, it's z order is modified, blocking instructions
+    		instructions.bringToFront();
+			liveIndicator.bringToFront();
     		instructions.setVisibility(View.VISIBLE);
         	glSurfaceView.setOnClickListener(null);
         	if(liveIndicator.getVisibility() == View.VISIBLE)
@@ -191,9 +199,11 @@ public class HWRecorderActivity extends Activity {
     	}
     }
     
-    public class GLSurfaceViewRenderer implements GLSurfaceView.Renderer{    	
+    public class GLSurfaceViewRenderer implements GLSurfaceView.Renderer{    
+    	boolean surfaceJustCreated = false;
         @Override
         public void onSurfaceCreated(GL10 gl, EGLConfig config) {
+        	surfaceJustCreated = true;
             Log.i(TAG, "GLSurfaceView created");
             GLES20.glDisable(GLES20.GL_DEPTH_TEST);
             GLES20.glDisable(GLES20.GL_CULL_FACE);
@@ -202,7 +212,7 @@ public class HWRecorderActivity extends Activity {
         @Override
         public void onSurfaceChanged(GL10 gl, int width, int height) {
         	//Log.i(TAG, "GLSurfaceView changed. HLSRecorder set : " + (mRecordingService != null && mRecordingService.hlsRecorder != null));
-        	Log.i(TAG, "GLSurfaceView changed.");
+        	Log.i(TAG, "GLSurfaceView changed. isPaused: " + isPaused);
         	gl.glViewport(0, 0, width, height);
             // for a fixed camera, set the projection too
             float ratio = (float) width / height;
@@ -210,15 +220,26 @@ public class HWRecorderActivity extends Activity {
             gl.glLoadIdentity();
             gl.glFrustumf(-ratio, ratio, -1, 1, 1, 10);
 
-            if( ((mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : mRecordingService.hlsRecorder.isRecording())){
-            	Log.i(TAG, "beginForegroundRecording onSurfaceChanged.");
-            	mRecordingService.hlsRecorder.beginForegroundRecording();
+            if( !isPaused && ((mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : mRecordingService.hlsRecorder.isRecording())){
+            	Log.i(TAG, "beginForegroundRecording onSurfaceChanged. isPaused: " + isPaused + " surfaceJustCreated: " + surfaceJustCreated);
+            	mRecordingService.hlsRecorder.beginForegroundRecording(surfaceJustCreated);
+            	if(surfaceJustCreated){
+            		HWRecorderActivity.this.runOnUiThread(new Runnable(){
+
+						@Override
+						public void run() {
+							Toast.makeText(getApplicationContext(), "Currently unable to display frames after screen off. Broadcast is still live.", Toast.LENGTH_LONG).show();
+						}
+            			
+            		});
+            	}
             }
+            surfaceJustCreated = false;
         }
 
         @Override
         public void onDrawFrame(GL10 gl) {
-    		//Log.i(TAG, "onDrawFrame. bg? " +((mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : mRecordingService.hlsRecorder.recordingInBackground));
+    		//Log.i(TAG, "onDrawFrame"); // bg? " +((mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : mRecordingService.hlsRecorder.recordingInBackground));
         	if( ((mRecordingService == null || mRecordingService.hlsRecorder == null) ? false : ( mRecordingService.hlsRecorder.isRecording() && !mRecordingService.hlsRecorder.recordingInBackground ) )){        		
         		mRecordingService.hlsRecorder.encodeVideoFrame();
         	}
